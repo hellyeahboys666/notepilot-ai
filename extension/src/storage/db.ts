@@ -1,12 +1,22 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { DocState } from '../engine/state';
 import type { ResponseCache } from '../ai/pipelines';
+import type { DocSummary } from '../core/summary';
+
+/** Per-document extras that live outside the sync engine: the latest summary and the companion Google Doc. */
+export interface DocExtras {
+  docId: string;
+  summary?: DocSummary;
+  /** The Google Doc NotePilot created for this document (it is updated in place on later exports). */
+  exportDoc?: { fileId: string; url: string; updatedAt: number; orgVersion: number };
+}
 
 /** Durable local state (IndexedDB): organized documents, source mappings and cached AI results. */
 
 interface NotePilotDB extends DBSchema {
   docs: { key: string; value: DocState };
   cache: { key: string; value: { key: string; value: string; at: number }; indexes: { at: number } };
+  extras: { key: string; value: DocExtras };
 }
 
 export interface DocStore {
@@ -19,10 +29,13 @@ export interface DocStore {
 
 let dbPromise: Promise<IDBPDatabase<NotePilotDB>> | null = null;
 function db() {
-  dbPromise ??= openDB<NotePilotDB>('notepilot', 1, {
-    upgrade(d) {
-      d.createObjectStore('docs', { keyPath: 'docId' });
-      d.createObjectStore('cache', { keyPath: 'key' }).createIndex('at', 'at');
+  dbPromise ??= openDB<NotePilotDB>('notepilot', 2, {
+    upgrade(d, oldVersion) {
+      if (oldVersion < 1) {
+        d.createObjectStore('docs', { keyPath: 'docId' });
+        d.createObjectStore('cache', { keyPath: 'key' }).createIndex('at', 'at');
+      }
+      if (oldVersion < 2) d.createObjectStore('extras', { keyPath: 'docId' });
     },
   });
   return dbPromise;
@@ -36,7 +49,9 @@ export const indexedDbStore: DocStore = {
     await (await db()).put('docs', state);
   },
   async remove(docId) {
-    await (await db()).delete('docs', docId);
+    const d = await db();
+    await d.delete('docs', docId);
+    await d.delete('extras', docId);
   },
   async list() {
     const all = await (await db()).getAll('docs');
@@ -46,6 +61,20 @@ export const indexedDbStore: DocStore = {
     const d = await db();
     await d.clear('docs');
     await d.clear('cache');
+    await d.clear('extras');
+  },
+};
+
+export const extrasStore = {
+  async get(docId: string): Promise<DocExtras | null> {
+    try {
+      return (await (await db()).get('extras', docId)) ?? null;
+    } catch {
+      return null;
+    }
+  },
+  async put(extras: DocExtras): Promise<void> {
+    await (await db()).put('extras', extras);
   },
 };
 

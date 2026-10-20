@@ -73,6 +73,20 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   download: <path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10" />,
+  summary: (
+    <>
+      <path d="M3 3.5h10M3 6.5h10M3 9.5h6" />
+      <path d="M11.5 9.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" fill="currentColor" strokeWidth={0.8} />
+    </>
+  ),
+  doc: (
+    <>
+      <path d="M4 1.8h5.5L12.5 5v9.2H4z" fill="#4285F4" stroke="none" />
+      <path d="M9.5 1.8V5h3" fill="#A1C2FA" stroke="none" />
+      <path d="M6 8h4.5M6 10h4.5M6 12h3" stroke="#fff" strokeWidth={1} />
+    </>
+  ),
+  external: <path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5" />,
   google: (
     <>
       <path d="M13.5 8.2c0-.4 0-.8-.1-1.2H8v2.3h3.1a2.7 2.7 0 0 1-1.2 1.8v1.5h1.9c1.1-1 1.7-2.5 1.7-4.4z" fill="#4285F4" stroke="none" />

@@ -27,9 +27,10 @@ const volatileStore = memoryStore();
 export const storeFor = (s: Settings): DocStore => (s.privacy.storeLocally ? indexedDbStore : volatileStore);
 
 /** Decides whether note content may be sent to the AI provider right now. */
-export function gateFor(docId: string): ProcessGate {
+/** Whether note text may be sent to the AI. `manual`: an explicit click (ignores the "automatic processing" switch). */
+export function gateFor(docId: string, opts: { manual?: boolean } = {}): ProcessGate {
   const s = getSettings();
-  if (!s.autoProcess) return { ok: false, reason: 'disabled' };
+  if (!s.autoProcess && !opts.manual) return { ok: false, reason: 'disabled' };
   if (!isAIConfigured(s.ai)) return { ok: false, reason: 'not_configured' };
   if (!s.consent || s.consent.endpointOrigin !== endpointOrigin(s.ai)) return { ok: false, reason: 'no_consent' };
   if (s.privacy.excludedDocs.includes(docId)) return { ok: false, reason: 'excluded' };

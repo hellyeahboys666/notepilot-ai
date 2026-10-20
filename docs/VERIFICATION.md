@@ -9,18 +9,20 @@ What was verified while building NotePilot AI, how, and what could not be verifi
 | Build: MV3 manifest, side panel, service worker, content script | ✅ Verified | `npm run build`; extension loads in Chromium 141 with no console errors |
 | Extension ID pinning for OAuth | ✅ Verified | `setup:oauth` predicts the ID, and Chromium assigned exactly that ID when loading the build |
 | Docs API → organized notes pipeline | ✅ Verified (simulated backend) | Real built extension in real Chromium; `docs.googleapis.com` requests routed to a mutable fake document with the documented REST response shape |
-| Spec §15 acceptance workflow, steps 1–11 | ✅ Verified (scripted model) | Engine-level simulation (`tests/acceptance.test.ts`) and the browser E2E run (`e2e/run-e2e.mjs`, 18/18 checks) |
-| Original doc never modified | ✅ Verified | Every Docs request in the E2E run was `GET` (18 requests, 13 of them cheap revision checks); static tests forbid write scopes, write endpoints and non-GET methods |
+| Spec §15 acceptance workflow, steps 1–11 | ✅ Verified (scripted model) | Engine-level simulation (`tests/acceptance.test.ts`) and the browser E2E run (`e2e/run-e2e.mjs`, 21/21 checks) |
+| Summary + companion Google Doc | ✅ Verified (simulated Drive) | Built extension in Chromium: *Summarize* shows the summary, key-point chips navigate, the Drive upload request is a `POST` that creates a Google Doc (summary, notes, insights), a second click `PATCH`es the same doc, and the notes doc is never a target. Unit tests cover deleted/trashed docs, a disabled Drive API, refused permission and token refresh |
+| Original doc never modified | ✅ Verified | Every Docs request in the E2E run was `GET`; Drive requests only ever targeted the companion doc. Static tests forbid Docs write endpoints, any Docs write scope, any Drive scope other than `drive.file` and any Drive endpoint other than upload |
 | Robustness (staleness, cancellation, back-off, offline, invalid output, budget, consent, persistence, long docs) | ✅ Verified | `tests/engine.test.ts` (17 tests, fake timers) |
 | Proxy server | ✅ Verified | `server/tests/app.test.ts` (7 tests over real HTTP) |
 | Sign-in against a real Google account and a real Google Doc | ⚠️ Not verified | Requires your own OAuth client bound to your extension ID (see below) |
 | Rewrite and insight quality with a real LLM | ⚠️ Not verified | No model API key was available in the build environment |
+| Google's HTML → Google Docs conversion of the companion doc | ⚠️ Not verified | Needs a real Drive account. The HTML uses only elements Google's importer documents support (headings, lists, tables, bold/italic, inline colours); a rendering of it is checked in the E2E run |
 
 ## Test inventory (all passing)
 
-- **Extension:** 79 tests in 9 files: docParser 5, identity 7, patch 18, context 6, completion 12, acceptance 2, engine 17, ai 8, readonly 4.
+- **Extension:** 94 tests in 10 files: docParser 5, identity 7, patch 18, context 6, completion 12, summaryExport 14, acceptance 2, engine 17, ai 8, readonly 5.
 - **Server:** 7 tests.
-- **Browser E2E:** 18 checks, built extension in Chromium 141 (headless):
+- **Browser E2E:** 21 checks, built extension in Chromium 141 (headless):
   1. organizes unstructured notes automatically
   2. labels AI clarifications and expansions distinctly
   3. a cut-off note ("ATP synthase uses proton gradient to") is finished, with only the AI-added words highlighted, no markers or "truncated" notes visible, and the completion rules present in the real request
@@ -39,6 +41,9 @@ What was verified while building NotePilot AI, how, and what could not be verifi
   16. a second panel on the same doc mirrors the leader instead of double-processing
   17. first run shows the guided setup and sends nothing before consent
   18. later updates don't re-trigger an earlier navigation, and notes the model fails to place still appear verbatim
+  19. *Summarize* shows a concise summary and saves the summary, organized notes and insights to a new Google Doc
+  20. summary key points link to their sections
+  21. summarizing again updates the same Google Doc (a fresh summary, not a cached one) instead of creating another
 
 ## Independent review
 
@@ -53,6 +58,13 @@ A separate review pass ran 3,000 randomized patch sequences against a deep-froze
 7. A title-only rename of the Google Doc didn't refresh the panel.
 
 The review also flagged a design gap, which is now fixed as well: a paragraph deleted and restored (undo) between polls now keeps its identity, so no AI work is repeated.
+
+## Version 0.3.0: structure, summary and Google Doc
+
+- The rewrite rules now ask for structure: tables for anything compared on shared attributes, numbered steps for processes, nested bullet lists, definitions, one-sentence overviews, and generous sections and subsections (split a section once it covers two sub-topics or grows past about five passages; split long notes into separate passages).
+- *Summarize* (Notes toolbar): an overview, three to seven key points and up to ten key terms, each linked to its section, plus up to four things to review next. Generated with the insights model only when clicked, and only when the notes changed (the ↻ button forces a new one).
+- The same click saves a companion Google Doc: Summary → Organized notes → Insights, with headings for the Docs outline, tables, AI labels, highlighted AI completions and math converted to text. It uses the `drive.file` permission, requested on first use, and is updated in place on later clicks (a new doc is made if it was deleted or trashed).
+- Not verified here: how Google converts the HTML into the final Google Doc, and real-model output quality.
 
 ## Version 0.2.0: finishing incomplete notes
 

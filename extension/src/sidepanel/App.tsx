@@ -6,6 +6,7 @@ import { indexedDbStore } from '../storage/db';
 import { useActiveDoc } from './hooks/useActiveDoc';
 import { useEngine, type EngineControls } from './hooks/useEngine';
 import { useSettings } from './hooks/useSettings';
+import { useSummary } from './hooks/useSummary';
 import { InsightsView } from './components/InsightsView';
 import { NotesView, useNow } from './components/NotesView';
 import { SettingsView } from './components/SettingsView';
@@ -19,6 +20,7 @@ export function App() {
   const [settings, update] = useSettings();
   const active = useActiveDoc();
   const [view, controls] = useEngine(active.docId, settings);
+  const [summary, summaryControls] = useSummary(active.docId);
   const [tab, setTab] = useState<Tab>('notes');
   const [sourceUnit, setSourceUnit] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
@@ -63,7 +65,7 @@ export function App() {
         ) : needsSetup ? (
           <Setup view={view} settings={settings} update={update} onSignedIn={controls.syncNow} />
         ) : (
-          <NotesView view={view} settings={settings} onShowSource={showSource} scrollTarget={scrollTarget} onScrollTargetHandled={clearScrollTarget} />
+          <NotesView view={view} settings={settings} onShowSource={showSource} scrollTarget={scrollTarget} onScrollTargetHandled={clearScrollTarget} summary={summary} summaryControls={summaryControls} />
         )}
       </main>
       {sourceUnit && view && <SourceSheet view={view} unitId={sourceUnit} onClose={() => setSourceUnit(null)} />}

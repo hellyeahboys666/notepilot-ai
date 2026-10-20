@@ -3,7 +3,7 @@ import { sectionOrder } from './patch';
 import { CATEGORY_ORDER } from './insights';
 import { fillsToBrackets, stripFills } from './fills';
 
-const CATEGORY_LABEL: Record<Insight['category'], string> = {
+export const CATEGORY_LABEL: Record<Insight['category'], string> = {
   connection: 'Conceptual connections',
   deeper: 'Deeper explanations',
   error: 'Possible errors',

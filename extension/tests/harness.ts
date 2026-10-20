@@ -59,7 +59,7 @@ export function payloadOf(messages: ChatMessage[]): RewritePayload {
 }
 
 /** A scripted model: each handler returns the ops a model would return, with a simulated latency. */
-export class FakeAI implements AIPipelines {
+export class FakeAI implements Pick<AIPipelines, 'rewrite' | 'insights'> {
   rewriteCalls: RewritePayload[] = [];
   insightCalls = 0;
   onRewrite: RewriteHandler = () => ({ ops: [] });

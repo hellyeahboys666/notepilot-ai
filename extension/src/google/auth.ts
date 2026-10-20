@@ -1,13 +1,18 @@
 /**
  * Google OAuth via the Chrome Identity API.
  *
- * Only the read-only Docs scope is ever requested. The extension has no code path that writes
- * to Google Docs (see tests/readonly.test.ts, which enforces this statically).
+ * Reading notes uses only the read-only Docs scope. The optional "save to Google Docs" feature
+ * additionally asks, when first used, for drive.file: it lets NotePilot create files and change
+ * only the files it created itself, so it can never modify the user's notes (see
+ * tests/readonly.test.ts, which enforces both statically).
  */
 export const DOCS_READONLY_SCOPE = 'https://www.googleapis.com/auth/documents.readonly';
+export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+export const EXPORT_SCOPES = [DOCS_READONLY_SCOPE, DRIVE_FILE_SCOPE];
 
 export interface AuthProvider {
-  getToken(interactive: boolean): Promise<string>;
+  /** Defaults to the read-only Docs scope. */
+  getToken(interactive: boolean, scopes?: string[]): Promise<string>;
   invalidate(token: string): Promise<void>;
   signOut(): Promise<void>;
 }
@@ -20,13 +25,15 @@ export class AuthRequiredError extends Error {
 }
 
 const chromeAuth: AuthProvider = {
-  async getToken(interactive) {
+  async getToken(interactive, scopes = [DOCS_READONLY_SCOPE]) {
     try {
-      const result = await chrome.identity.getAuthToken({ interactive, scopes: [DOCS_READONLY_SCOPE] });
+      const result = await chrome.identity.getAuthToken({ interactive, scopes });
       const token = typeof result === 'string' ? result : result?.token;
       if (!token) throw new AuthRequiredError();
       const granted = typeof result === 'object' ? result.grantedScopes : undefined;
-      if (granted && !granted.includes(DOCS_READONLY_SCOPE)) throw new AuthRequiredError('Read access to Google Docs was not granted');
+      const missing = granted ? scopes.filter((sc) => !granted.includes(sc)) : [];
+      if (missing.includes(DOCS_READONLY_SCOPE)) throw new AuthRequiredError('Read access to Google Docs was not granted');
+      if (missing.length) throw new AuthRequiredError('Permission to create the Google Doc was not granted');
       return token;
     } catch (e) {
       if (e instanceof AuthRequiredError) throw e;

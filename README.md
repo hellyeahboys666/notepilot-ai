@@ -1,17 +1,19 @@
 # NotePilot AI
 
-A Chrome extension that reads the Google Doc you're typing in and keeps a live, rewritten, organized version of it in the Chrome side panel, with AI insights alongside. **It never modifies your Google Doc.**
+A Chrome extension that reads the Google Doc you're typing in and keeps a live, rewritten, organized version of it in the Chrome side panel, with AI insights alongside. One click gives you a concise summary and saves everything to a separate Google Doc. **It never modifies your notes.**
 
 <p>
 <img src="docs/screenshots/02-new-section-inserted.png" width="270" alt="Organized notes with a new section inserted in place">
 <img src="docs/screenshots/03-insights.png" width="270" alt="AI insights">
-<img src="docs/screenshots/04-source-inspector.png" width="270" alt="Source inspector">
+<img src="docs/screenshots/10-summary.png" width="270" alt="Summary with key points linked to sections and the companion Google Doc">
 </p>
 
 - **Two parallel documents.** Your Google Doc stays the raw, messy source of truth. The side panel holds a separately maintained organized document: headings, merged ideas, expanded shorthand, tables and equations.
 - **Incremental, not regenerated.** Each change is diffed at paragraph level, and the model returns a *patch*: extend, rewrite, move, merge, split or delete specific sections and passages, all addressed by stable IDs. New facts go where they belong conceptually, not at the bottom.
 - **Faithful.** Every organized passage cites the source paragraphs it came from. You can click to see them, and passages are labelled as *your notes*, *AI clarification* or *AI expansion (unverified)*. A deletion that would lose any of your content is reverted. Anything the model fails to represent is repaired, or shown verbatim, so nothing is silently dropped.
 - **Finishes what you didn't.** Sentences you cut off mid-way are completed, and ideas you started but didn't write out are developed (Settings → Writing → *Finish incomplete notes*: Off / Finish / Develop). The words the AI added are highlighted, so you always know which part you wrote. The rewrite favours short sentences, plain words, a logical order and lists, tables or steps where they make an idea easier to follow.
+- **Structured, not just reworded.** Comparisons become tables, processes become numbered steps, parallel points become (nested) lists, key terms become definitions, and notes are cut into sections and subsections so each one covers a single idea.
+- **Summary + Google Doc.** *Summarize* (Notes toolbar) shows an overview, key points and key terms that link to their sections, plus what to review next. The same click saves the summary, the organized notes and the insights to a companion Google Doc (headings show up in the Docs outline). Later clicks update that same doc.
 - **Hands-free after setup.** Adaptive polling, debouncing on typing pauses, single-flight jobs, stale-result rejection, cancellation, back-off, offline recovery.
 
 ---
@@ -36,8 +38,8 @@ npm run setup:oauth      # creates a key, writes .env.local, prints your Extensi
 
 Then in the [Google Cloud Console](https://console.cloud.google.com):
 
-1. **APIs & Services → Library →** enable **Google Docs API**.
-2. **OAuth consent screen:** User type *External* (or *Internal* for a Workspace org). Add the scope `https://www.googleapis.com/auth/documents.readonly`, and add your Google account as a **test user**.
+1. **APIs & Services → Library →** enable **Google Docs API** and **Google Drive API** (Drive is only used to save the companion Google Doc).
+2. **OAuth consent screen:** User type *External* (or *Internal* for a Workspace org). Under **Data Access**, add the scopes `https://www.googleapis.com/auth/documents.readonly` and `https://www.googleapis.com/auth/drive.file`, and add your Google account as a **test user**.
 3. **Credentials → Create credentials → OAuth client ID →** Application type **Chrome Extension**, Item ID = the Extension ID printed above.
 4. Record the client ID:
    ```bash
@@ -57,6 +59,7 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 1. Open a Google Doc and click the NotePilot toolbar icon (or press **Alt+Shift+N**).
 2. The panel walks you through three steps: **Sign in with Google** (read-only), **connect an AI model** (key + model names, then *Connect & test*), and **allow sending notes**.
 3. Type. That's it.
+4. Optional: click **Summarize** in the Notes toolbar. The first time, Google asks you to allow NotePilot to *create files* in Drive (it can only see and change files it creates).
 
 > **Models.** Defaults are `gpt-4.1-mini` (rewriting) and `gpt-4.1` (insights). Provider presets are included, and any OpenAI-compatible model name works. A fast model keeps the panel current; a stronger one gives better insights. Edit the per-token prices in Settings → Cost limits to match your provider.
 
@@ -103,7 +106,7 @@ content script: "user is typing" ──► debounce: wait for a typing pause (ma
 
 ### Privacy & safety
 
-- **Read-only by construction:** only the `documents.readonly` scope; the Docs client issues only `GET`. `tests/readonly.test.ts` fails the build if a write endpoint, write scope or non-GET method is ever introduced.
+- **Your notes are read-only by construction:** they are read with the `documents.readonly` scope, and the Docs client issues only `GET`. Saving the companion Google Doc uses `drive.file`, which Google limits to files NotePilot created itself, so it cannot change your notes; it's requested only when you first click *Summarize*, uses only Drive's upload endpoint, and refuses to target the doc it reads from. `tests/readonly.test.ts` fails the build if a Docs write endpoint, a broader scope or another Drive endpoint is ever introduced.
 - **Consent first:** no note text is sent anywhere until you approve the specific AI endpoint. Changing the endpoint asks again. You can also exclude documents, or require approval per document.
 - **Prompt-injection hardening:** note text travels only as JSON-encoded data, separate from the instructions, and the system prompt treats it as untrusted. Model output is schema-validated, rendered as restricted markdown with no HTML and no images (so injected image links can't exfiltrate data), and links require a click. The extension CSP forbids remote scripts and images.
 - **Redaction (on by default):** email addresses, phone/ID-number patterns and card numbers are replaced before sending. Numbers, units, dates and equations are kept intact.
@@ -129,7 +132,7 @@ In the extension: Settings → AI model → **NotePilot server**, then enter the
 ## Testing
 
 ```bash
-npm test                  # 79 extension tests + 7 server tests
+npm test                  # 94 extension tests + 7 server tests
 cd extension && npm run e2e   # real Chromium end-to-end run (needs a Chromium/Chrome binary; CHROMIUM_PATH=…)
 ```
 
@@ -142,7 +145,8 @@ cd extension && npm run e2e   # real Chromium end-to-end run (needs a Chromium/C
 | `acceptance` | **Spec §15 workflow** on the real `SyncEngine` with a fake Docs backend and scripted model: organize → place a new fact at its conceptual location → update an earlier section in place → reconcile an edited statement → reconcile a deleted one (including the AI expansion anchored to it) → insights update → only GETs to the doc → latency p90 ≤ 15 s |
 | `engine` | stale-result rejection, insight cancellation, Docs 429 back-off with Retry-After (not shortened by typing), offline recovery, invalid AI output → verbatim fallback → later self-healing (edits made during a failing call stay pending), repair calls, consent and budget gates, idle quota use (also while paused), resume from IndexedDB, batched long-doc builds, revision-check fallback, undo keeps paragraph identity |
 | `ai` | OpenAI-compatible request shape, provider quirks (`max_completion_tokens`, temperature), error mapping, retry with validation feedback, cost tracking, cache |
-| `readonly` | static guarantees: read-only scope, no write endpoints, GET-only Docs client, content script never reads or alters the editor |
+| `summaryExport` | structure rules (tables, steps, lists, sections), summary validation and pipeline, companion-doc HTML (outline headings, tables, labels, highlighted completions, math as text), Drive save: create, update the same doc, never the source doc, deleted/trashed doc, disabled API, refused permission, token refresh |
+| `readonly` | static guarantees: read-only Docs scope and GET-only Docs client, `drive.file` as the only Drive scope, only the upload endpoint, content script never reads or alters the editor |
 | `server` | auth, forwarding with the server key, cache, rate limit, daily budget, model allowlist, error passthrough |
 | `e2e/run-e2e.mjs` | The **built extension in real Chromium**: Docs REST API routed to a mutable fake document, AI endpoint routed to a scripted model, and the actual side panel driven through the acceptance scenario, plus DOM-node identity, scroll preservation, collapse persistence, source inspector, multi-window leader election and first-run consent. Screenshots go to `e2e/screenshots/`. |
 
@@ -158,7 +162,7 @@ extension/
   src/core/                 pure logic: types, Docs parser, identity/diff, patch engine, schemas,
                             prompts, context builder, insights, redaction, export
   src/engine/               SyncEngine (polling, debouncing, jobs, integrity, metrics) + state
-  src/google/               chrome.identity auth, read-only Docs API client
+  src/google/               chrome.identity auth, read-only Docs API client, companion Google Doc export (drive.file)
   src/ai/                   OpenAI-compatible client, rewrite/insight pipelines, usage tracking
   src/storage/              IndexedDB (docs, cache), chrome.storage settings
   src/sidepanel/            React UI: Notes (organized/original/outline), Insights, Settings, setup
@@ -173,6 +177,9 @@ docs/                       verification report, screenshots
 
 - **"Sign in with Google" fails with `bad client id` / `OAuth2 not granted`:** the client must be of type *Chrome Extension*, its Item ID must equal the ID shown in `chrome://extensions`, and you must rebuild after `setup:oauth`.
 - **403 "Google Docs API has not been used in project…":** enable the Docs API in the same Cloud project as the OAuth client.
+- **"Google Doc not saved: The Google Drive API is not enabled…":** enable the Google Drive API in the same Cloud project, then click *Summarize* again.
+- **"Permission to create Google Docs was not granted":** click *Summarize* again and approve the *create files* permission (it can only touch files NotePilot creates).
+- **Edits in the companion Google Doc disappeared:** that doc is regenerated each time you click *Summarize*. Edit your original notes instead, or copy the doc (File → Make a copy) to keep a version.
 - **School or work Google account blocked:** Workspace admins can block unverified third-party apps. Ask your admin to allow the OAuth client, or use a personal account for testing.
 - **Panel says "AI provider rejected the API key":** re-enter the key in Settings → AI model and press *Connect & test*.
 - **Nothing updates:** check the status pill. *Paused*, *Setup*, *Limit* and *Excluded* each have a one-click fix in the banner. Settings → Diagnostics shows poll interval, request rates and measured latencies.

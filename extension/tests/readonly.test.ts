@@ -28,8 +28,22 @@ describe('read-only Google Docs integration', () => {
     for (const { p, text } of sources) {
       expect(text, p).not.toMatch(/batchUpdate/);
       expect(text, p).not.toMatch(/auth\/documents['"`]/); // full (write) Docs scope
-      expect(text, p).not.toMatch(/auth\/drive(?!\.metadata\.readonly)/);
+      // drive.file (files NotePilot creates itself) is the only Drive scope allowed.
+      expect(text, p).not.toMatch(/auth\/drive(?!\.file['"`])/);
     }
+  });
+
+  it('only the companion-doc exporter talks to Google Drive, and only through the upload endpoint', () => {
+    for (const { p, text } of sources) {
+      if (p.endsWith('google/driveExport.ts')) continue;
+      expect(text, p).not.toMatch(/googleapis\.com\/(upload\/)?drive/);
+    }
+    const drive = sources.find((s) => s.p.endsWith('google/driveExport.ts'))!.text;
+    expect(drive).not.toMatch(/docs\.googleapis\.com/);
+    expect([...drive.matchAll(/https:\/\/[^'"`\s$]+/g)].map((m) => m[0])).toEqual(['https://www.googleapis.com/upload/drive/v3/files', 'https://docs.google.com/document/d/']);
+    const methods = new Set([...drive.matchAll(/'(GET|POST|PUT|PATCH|DELETE)'/g)].map((m) => m[1]));
+    expect([...methods].sort()).toEqual(['PATCH', 'POST']);
+    expect(drive).not.toMatch(/method:\s*'DELETE'|\/copy|\/permissions/);
   });
 
   it('only ever issues GET requests to the Docs API', () => {

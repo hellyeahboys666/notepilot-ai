@@ -75,6 +75,17 @@ body {
 .np-prose li > ol {
   @apply mt-0.5;
 }
+.np-prose li > ul {
+  list-style-type: circle;
+}
+.np-prose p + div,
+.np-prose div + p,
+.np-prose ul + div,
+.np-prose ol + div,
+.np-prose div + ul,
+.np-prose div + ol {
+  @apply mt-2;
+}
 .np-prose strong {
   @apply font-semibold text-ink-900 dark:text-ink-50;
   background: linear-gradient(transparent 58%, rgb(250 204 21 / 0.32) 58%);
@@ -105,6 +116,12 @@ body {
 .np-prose td {
   @apply border border-ink-200 dark:border-ink-700 px-2 py-1 align-top;
 }
+.np-prose tbody tr:nth-child(even) td {
+  @apply bg-ink-50/60 dark:bg-ink-900/40;
+}
+.np-prose td:first-child {
+  @apply font-medium text-ink-900 dark:text-ink-100;
+}
 .np-prose h1,
 .np-prose h2,
 .np-prose h3,
@@ -116,6 +133,12 @@ body {
 }
 .np-prose hr {
   @apply my-3 border-ink-200 dark:border-ink-800;
+}
+
+/* Markdown rendered inline (summary key points followed by section chips). */
+.np-inline,
+.np-inline p {
+  display: inline;
 }
 
 /* Smaller prose for insight cards. */

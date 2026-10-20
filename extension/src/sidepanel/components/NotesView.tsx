@@ -5,6 +5,8 @@ import type { Settings } from '../../core/settings';
 import type { EngineView } from '../../engine/state';
 import { loadCollapsed, saveCollapsed } from '../../storage/settingsStore';
 import { Markdown } from './Markdown';
+import { SummaryCard } from './SummaryCard';
+import type { SummaryControls, SummaryState } from '../hooks/useSummary';
 import { Badge, Icon, Segmented, cx, relativeTime } from './ui';
 
 const FRESH_MS = 30_000;
@@ -53,15 +55,21 @@ export function NotesView({
   onShowSource,
   scrollTarget,
   onScrollTargetHandled,
+  summary,
+  summaryControls,
 }: {
   view: EngineView;
   settings: Settings;
   onShowSource: (unitId: string) => void;
   scrollTarget: { id: string; nonce: number } | null;
   onScrollTargetHandled: () => void;
+  summary: SummaryState;
+  summaryControls: SummaryControls;
 }) {
   const [mode, setMode] = useState<'organized' | 'original'>('organized');
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  useEffect(() => setSummaryOpen(false), [view.docId]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const now = useNow(5000);
   const doc = view.organized;
@@ -145,6 +153,24 @@ export function NotesView({
           ]}
         />
         <div className="flex-1" />
+        {!empty && (
+          <button
+            type="button"
+            onClick={() => {
+              setMode('organized');
+              setSummaryOpen(true);
+              summaryControls.run(view, settings);
+            }}
+            disabled={summary.phase !== 'idle'}
+            title="Summarize these notes and save everything to a Google Doc"
+            className={cx(
+              'np-focus inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium disabled:opacity-60',
+              summaryOpen ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800',
+            )}
+          >
+            <Icon name="summary" /> {summary.phase === 'idle' ? 'Summarize' : summary.phase === 'summarizing' ? 'Summarizing…' : 'Saving…'}
+          </button>
+        )}
         {mode === 'organized' && !empty && (
           <button
             type="button"
@@ -161,6 +187,16 @@ export function NotesView({
       </div>
 
       {mode === 'organized' && outlineOpen && !empty && <Outline doc={doc} recent={view.recent} now={now} onGo={goTo} />}
+      {mode === 'organized' && summaryOpen && !empty && (
+        <SummaryCard
+          state={summary}
+          doc={doc}
+          now={now}
+          onRefresh={() => summaryControls.run(view, settings, { force: true })}
+          onGo={goTo}
+          onClose={() => setSummaryOpen(false)}
+        />
+      )}
 
       {mode === 'original' ? (
         <OriginalView blocks={view.blocks} doc={doc} onGo={goTo} />

@@ -1,7 +1,7 @@
 {
   "name": "notepilot-ai",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "workspaces": ["extension", "server"],
   "scripts": {
     "build": "npm run build -w extension && npm run build -w server",

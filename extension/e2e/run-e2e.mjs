@@ -7,7 +7,7 @@
  * Env:   CHROMIUM_PATH (defaults to the Playwright-managed Chromium), E2E_SHOTS (screenshot dir)
  */
 import { chromium } from 'playwright-core';
-import { mkdtempSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +50,7 @@ const docsJson = () => ({
 });
 
 const aiLog = [];
+const driveRequests = [];
 const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
 
 const log = (...a) => console.log('[e2e]', ...a);
@@ -83,6 +84,15 @@ try {
     const body = url.searchParams.get('fields') === 'revisionId' ? { revisionId: `rev-${doc.revision}` } : docsJson();
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  // Google Drive upload endpoint (companion Google Doc).
+  await context.route('https://www.googleapis.com/upload/drive/**', async (route) => {
+    const req = route.request();
+    const corsDrive = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'POST, PATCH' };
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: corsDrive });
+    driveRequests.push({ method: req.method(), url: req.url(), body: req.postData() ?? '', auth: req.headers().authorization });
+    const id = 'e2e-companion-doc';
+    await route.fulfill({ status: 200, headers: corsDrive, contentType: 'application/json', body: JSON.stringify({ id, webViewLink: `https://docs.google.com/document/d/${id}/edit`, trashed: false }) });
+  });
   await context.route('https://ai.notepilot.test/**', async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
@@ -90,8 +100,10 @@ try {
     const user = body.messages.find((m) => m.role === 'user').content;
     const payload = JSON.parse(user.slice(user.indexOf('{')));
     const isInsights = body.messages[0].content.includes('tutor and research assistant');
-    const out = isInsights ? model.insights(payload) : model.rewrite(payload);
-    aiLog.push({ kind: isInsights ? 'insights' : 'rewrite', model: body.model, payload, system: body.messages[0].content, at: Date.now() });
+    const isSummary = body.messages[0].content.includes("NotePilot's study assistant");
+    const kind = isSummary ? 'summary' : isInsights ? 'insights' : 'rewrite';
+    const out = isSummary ? model.summary(payload) : isInsights ? model.insights(payload) : model.rewrite(payload);
+    aiLog.push({ kind, model: body.model, payload, system: body.messages[0].content, at: Date.now() });
     await new Promise((r) => setTimeout(r, 400)); // simulated model latency
     await route.fulfill({
       status: 200,
@@ -245,6 +257,50 @@ try {
   await page.screenshot({ path: join(shots, '05-original-view.png') });
   await page.getByRole('radio', { name: 'Organized' }).click();
 
+  await check('Summarize shows a concise summary and saves notes, insights and summary to a new Google Doc', async () => {
+    await scroller.evaluate((el) => (el.scrollTop = 0));
+    await page.getByRole('button', { name: /^Summarize/ }).click();
+    const card = page.getByTestId('summary-card');
+    await card.getByText(/Cells release energy from glucose in stages/).waitFor({ timeout: 30_000 });
+    const open = card.getByRole('link', { name: /Open/ });
+    await open.waitFor({ timeout: 30_000 });
+    assert.equal(await open.getAttribute('href'), 'https://docs.google.com/document/d/e2e-companion-doc/edit');
+    assert.equal(driveRequests.length, 1);
+    const [first] = driveRequests;
+    assert.equal(first.method, 'POST');
+    assert.match(first.url, /^https:\/\/www\.googleapis\.com\/upload\/drive\/v3\/files\?uploadType=multipart/);
+    assert.ok(first.body.includes('application/vnd.google-apps.document'));
+    for (const part of ['<h1>Summary</h1>', '<h2>Key points</h2>', '<h1>Organized notes</h1>', 'Anaerobic Metabolism', '<h1>Insights</h1>', 'Check your understanding']) assert.ok(first.body.includes(part), `doc is missing ${part}`);
+    assert.equal(aiLog.filter((e) => e.kind === 'summary').length, 1);
+    // Keep the HTML that Google Drive would convert, for inspection.
+    const html = first.body.slice(first.body.indexOf('<!DOCTYPE html>'), first.body.lastIndexOf('</html>') + 7);
+    writeFileSync(join(shots, 'companion-doc.html'), html);
+  });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(shots, '10-summary.png') });
+
+  await check('summary key points link to their sections', async () => {
+    const secId = await page.evaluate(() => Object.values(window.__npView.organized.sections).find((s) => s.title === 'Anaerobic Metabolism').id);
+    const before = await scroller.evaluate((el) => el.scrollTop);
+    await page.getByTestId('summary-card').getByRole('button', { name: 'Anaerobic Metabolism' }).first().click();
+    await page.waitForTimeout(1000);
+    const top = await page.locator('#np-sec-' + secId).boundingBox();
+    const after = await scroller.evaluate((el) => el.scrollTop);
+    assert.ok(top && after > before && top.y >= 0 && top.y < 760, `section scrolled into view (y=${top?.y}, scrollTop ${before} → ${after}, max ${await scroller.evaluate((el) => el.scrollHeight - el.clientHeight)})`);
+  });
+
+  await check('summarizing again updates the same Google Doc instead of creating another', async () => {
+    await scroller.evaluate((el) => (el.scrollTop = 0));
+    await page.getByTestId('summary-card').getByRole('button', { name: 'Make a new summary' }).click();
+    for (let t = 0; driveRequests.length < 2 && t < 300; t++) await page.waitForTimeout(100);
+    await page.getByTestId('summary-card').getByRole('link', { name: /Open/ }).waitFor({ timeout: 30_000 });
+    assert.equal(driveRequests.length, 2);
+    assert.equal(driveRequests[1].method, 'PATCH');
+    assert.match(driveRequests[1].url, /\/files\/e2e-companion-doc\?/);
+    assert.equal(aiLog.filter((e) => e.kind === 'summary').length, 2, 'a new summary was requested (not served from cache)');
+    assert.ok(driveRequests.every((r) => !r.url.includes(DOC_ID)), 'the notes doc is never a Drive target');
+  });
+
   await page.getByRole('tab', { name: 'Settings' }).click();
   await page.waitForTimeout(300);
   await page.screenshot({ path: join(shots, '06-settings.png'), fullPage: false });
@@ -260,6 +316,7 @@ try {
     assert.ok(docsRequests.length > 5);
     const methods = [...new Set(docsRequests.map((r) => r.method))];
     assert.deepEqual(methods, ['GET']);
+    assert.ok(driveRequests.every((r) => !r.url.includes(DOC_ID) && !r.body.includes(`"id":"${DOC_ID}"`)));
     assert.ok(docsRequests.every((r) => !/batchUpdate|:/.test(new URL(r.url).pathname.split('/documents/')[1] ?? '')));
     log(`   ${docsRequests.length} Docs API requests, all GET (${docsRequests.filter((r) => r.url.includes('fields=revisionId')).length} cheap revision checks)`);
   });
@@ -297,5 +354,5 @@ try {
 }
 
 const failed = results.filter((r) => !r.ok);
-log(`\n${results.length - failed.length}/${results.length} checks passed · AI calls: ${aiLog.filter((a) => a.kind === 'rewrite').length} rewrite, ${aiLog.filter((a) => a.kind === 'insights').length} insights · screenshots in ${shots}`);
+log(`\n${results.length - failed.length}/${results.length} checks passed · AI calls: ${aiLog.filter((a) => a.kind === 'rewrite').length} rewrite, ${aiLog.filter((a) => a.kind === 'insights').length} insights, ${aiLog.filter((a) => a.kind === 'summary').length} summary · screenshots in ${shots}`);
 process.exit(failed.length ? 1 : 0);

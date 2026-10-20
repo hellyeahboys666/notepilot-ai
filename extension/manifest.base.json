@@ -12,7 +12,7 @@
   "side_panel": { "default_path": "sidepanel.html" },
   "background": { "service_worker": "background.js", "type": "module" },
   "permissions": ["sidePanel", "identity", "storage", "unlimitedStorage"],
-  "host_permissions": ["https://docs.google.com/document/*", "https://docs.googleapis.com/*"],
+  "host_permissions": ["https://docs.google.com/document/*", "https://docs.googleapis.com/*", "https://www.googleapis.com/upload/drive/*"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "content_scripts": [
     {

@@ -46,8 +46,8 @@ console.log(`
 Extension ID: ${extensionId}
 
 Next steps (Google Cloud Console → https://console.cloud.google.com):
-  1. Enable the "Google Docs API" for your project.
-  2. OAuth consent screen: add the scope .../auth/documents.readonly; add yourself as a test user.
+  1. Enable the "Google Docs API" and the "Google Drive API" for your project.
+  2. OAuth consent screen: add the scopes .../auth/documents.readonly and .../auth/drive.file; add yourself as a test user.
   3. Credentials → Create OAuth client ID → Application type "Chrome Extension",
      Item ID = ${extensionId}
   4. npm run setup:oauth -- --client-id=<the client ID>   ${clientId ? '(done ✓)' : ''}

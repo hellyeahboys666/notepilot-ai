@@ -133,3 +133,21 @@ export function insights(p) {
   }
   return { upsert, remove: [] };
 }
+
+export function summary(p) {
+  const id = (title) => p.organized.sections.find((s) => s.title === title)?.id;
+  const ids = (...t) => t.map(id).filter(Boolean);
+  return {
+    overview: 'Cells release energy from glucose in stages: glycolysis in the cytoplasm, then the citric acid cycle and electron transport in the mitochondria. Without oxygen, fermentation keeps glycolysis going.',
+    key_points: [
+      { text: '**Glycolysis** splits glucose into pyruvate in the cytoplasm for a net **2 ATP**.', sections: ids('Glycolysis') },
+      { text: '**Fermentation** regenerates NAD⁺ so glycolysis continues without oxygen.', sections: ids('Anaerobic Metabolism') },
+      { text: 'The citric acid cycle produces NADH and FADH₂ in the matrix.', sections: ids('Citric Acid Cycle') },
+    ],
+    key_terms: [
+      { term: 'ATP synthase', definition: 'Enzyme that uses the proton gradient to make ATP.', sections: ids('Electron Transport Chain') },
+      { term: 'Fermentation', definition: 'Anaerobic pathway that regenerates NAD⁺.', sections: ids('Anaerobic Metabolism') },
+    ],
+    review: [{ text: 'Why oxygen matters for the electron transport chain is not explained.', sections: ids('Electron Transport Chain') }],
+  };
+}

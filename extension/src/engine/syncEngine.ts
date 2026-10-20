@@ -35,7 +35,7 @@ export type ProcessGate =
 
 export interface EngineDeps {
   docs: DocsSource & { stats?: { recent: number[] } };
-  ai: AIPipelines;
+  ai: Pick<AIPipelines, 'rewrite' | 'insights'>;
   store: DocStore;
   getSettings: () => Settings;
   gate: () => ProcessGate;

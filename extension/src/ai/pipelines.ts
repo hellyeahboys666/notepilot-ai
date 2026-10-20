@@ -10,6 +10,8 @@ import {
   type RewriteResponse,
 } from '../core/schema';
 import { hash53 } from '../core/text';
+import { parseSummaryResponse, type DocSummary } from '../core/summary';
+import type { OrganizedDoc } from '../core/types';
 import { AIError, chatCompletion, type AIResult } from './client';
 import type { UsageTracker } from './usage';
 
@@ -30,6 +32,8 @@ export interface ResponseCache {
 export interface AIPipelines {
   rewrite(messages: ChatMessage[], signal: AbortSignal): Promise<RewriteResponse & { latencyMs: number; cached: boolean }>;
   insights(messages: ChatMessage[], signal: AbortSignal): Promise<{ upsert: InsightItem[]; remove: string[]; latencyMs: number; cached: boolean }>;
+  /** On-demand summary (deeper model). Validated against the doc it summarizes. */
+  summary(messages: ChatMessage[], doc: OrganizedDoc, signal: AbortSignal, opts?: { fresh?: boolean }): Promise<{ summary: DocSummary; latencyMs: number; cached: boolean }>;
 }
 
 export type ChatFn = typeof chatCompletion;
@@ -41,15 +45,16 @@ export function createPipelines(
   chat: ChatFn = chatCompletion,
 ): AIPipelines {
   async function call<T>(
-    kind: 'rewrite' | 'insights',
+    kind: 'rewrite' | 'insights' | 'summary',
     messages: ChatMessage[],
     signal: AbortSignal,
     parse: (json: unknown) => T,
+    opts: { fresh?: boolean } = {},
   ): Promise<T & { latencyMs: number; cached: boolean }> {
     const s = getSettings();
     const model = kind === 'rewrite' ? s.ai.fastModel : s.ai.deepModel || s.ai.fastModel;
     const key = `${kind}:${hash53(`${s.ai.mode}|${s.ai.baseUrl}|${model}|${JSON.stringify(messages)}`)}`;
-    const cachedText = await cache?.get(key).catch(() => undefined);
+    const cachedText = opts.fresh ? undefined : await cache?.get(key).catch(() => undefined);
     if (cachedText) {
       try {
         usage.recordCacheHit();
@@ -66,8 +71,8 @@ export function createPipelines(
       result = await chat(s.ai, {
         model,
         messages: convo,
-        temperature: kind === 'rewrite' ? 0.2 : 0.4,
-        maxTokens: kind === 'rewrite' ? 8000 : 3000,
+        temperature: kind === 'insights' ? 0.4 : 0.2,
+        maxTokens: kind === 'rewrite' ? 8000 : kind === 'summary' ? 2000 : 3000,
         jsonMode: s.ai.jsonMode,
         jsonSchema: kind === 'rewrite' ? REWRITE_JSON_SCHEMA : undefined,
         signal,
@@ -99,5 +104,6 @@ export function createPipelines(
         return r;
       }),
     insights: (messages, signal) => call('insights', messages, signal, (json) => parseInsightsResponse(json)),
+    summary: (messages, doc, signal, opts) => call('summary', messages, signal, (json) => ({ summary: parseSummaryResponse(json, doc) }), opts),
   };
 }
