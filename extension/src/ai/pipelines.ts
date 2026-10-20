@@ -72,7 +72,7 @@ export function createPipelines(
         model,
         messages: convo,
         temperature: kind === 'insights' ? 0.4 : 0.2,
-        maxTokens: kind === 'rewrite' ? 8000 : kind === 'summary' ? 2000 : 3000,
+        maxTokens: kind === 'summary' ? 4000 : 8000,
         jsonMode: s.ai.jsonMode,
         jsonSchema: kind === 'rewrite' ? REWRITE_JSON_SCHEMA : undefined,
         signal,

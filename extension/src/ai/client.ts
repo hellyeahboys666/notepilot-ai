@@ -40,7 +40,17 @@ export interface AIResult {
 }
 
 /** Per-endpoint/model parameter quirks discovered at runtime (e.g. reasoning models). */
-const quirks = new Map<string, { maxCompletionTokens?: boolean; noTemperature?: boolean; noResponseFormat?: boolean; noSchema?: boolean }>();
+type Quirks = { maxCompletionTokens?: boolean; noTemperature?: boolean; noResponseFormat?: boolean; noSchema?: boolean };
+const quirks = new Map<string, Quirks>();
+
+/** Known quirks, so current reasoning models work on the first request instead of after 400s. */
+export function knownQuirks(url: string, model: string): Quirks {
+  const m = model.toLowerCase().replace(/^[\w-]+\//, '');
+  const q: Quirks = {};
+  if (/api\.openai\.com/.test(url) || /^(gpt-5|o\d)/.test(m)) q.maxCompletionTokens = true;
+  if (/^(gpt-5|o\d)/.test(m) || /^claude-(opus|sonnet|haiku|fable)-5/.test(m)) q.noTemperature = true;
+  return q;
+}
 
 export function endpointFor(s: AISettings): { url: string; key: string } {
   const base = (s.mode === 'proxy' ? s.proxyUrl : s.baseUrl).replace(/\/+$/, '');
@@ -51,7 +61,7 @@ export async function chatCompletion(settings: AISettings, req: AIRequest, fetch
   const { url, key } = endpointFor(settings);
   const qk = `${url}|${req.model}`;
   for (let attempt = 0; attempt < 4; attempt++) {
-    const q = quirks.get(qk) ?? {};
+    const q = quirks.get(qk) ?? knownQuirks(url, req.model);
     const body: Record<string, unknown> = { model: req.model, messages: req.messages, stream: false };
     if (q.maxCompletionTokens) body.max_completion_tokens = req.maxTokens;
     else body.max_tokens = req.maxTokens;

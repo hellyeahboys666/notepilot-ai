@@ -61,7 +61,7 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 3. Type. That's it.
 4. Optional: click **Summarize** in the Notes toolbar. The first time, Google asks you to allow NotePilot to *create files* in Drive (it can only see and change files it creates).
 
-> **Models.** Defaults are `gpt-4.1-mini` (rewriting) and `gpt-4.1` (insights). Provider presets are included, and any OpenAI-compatible model name works. A fast model keeps the panel current; a stronger one gives better insights. Edit the per-token prices in Settings → Cost limits to match your provider.
+> **Models.** Defaults are `gpt-5.4-mini` (rewriting) and `gpt-5.4` (insights). Provider presets are included, and any OpenAI-compatible model name works. A fast model keeps the panel current; a stronger one gives better insights. Edit the per-token prices in Settings → Cost limits to match your provider.
 
 ---
 

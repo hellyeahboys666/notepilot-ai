@@ -69,11 +69,11 @@ export const DEFAULT_SETTINGS: Settings = {
     apiKey: '',
     proxyUrl: 'http://localhost:8787/v1',
     proxyToken: '',
-    fastModel: 'gpt-4.1-mini',
-    deepModel: 'gpt-4.1',
+    fastModel: 'gpt-5.4-mini',
+    deepModel: 'gpt-5.4',
     jsonMode: 'json_object',
-    inputPricePerM: 0.4,
-    outputPricePerM: 1.6,
+    inputPricePerM: 0.75,
+    outputPricePerM: 4.5,
   },
   rewriteIntensity: 'balanced',
   detailLevel: 'standard',
@@ -89,9 +89,9 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const PROVIDER_PRESETS: { label: string; baseUrl: string; fast: string; deep: string; jsonMode: JsonMode }[] = [
-  { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', fast: 'gpt-4.1-mini', deep: 'gpt-4.1', jsonMode: 'json_object' },
-  { label: 'Anthropic (OpenAI-compatible)', baseUrl: 'https://api.anthropic.com/v1', fast: 'claude-haiku-4-5', deep: 'claude-sonnet-4-5', jsonMode: 'prompt_only' },
-  { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', fast: 'openai/gpt-4.1-mini', deep: 'openai/gpt-4.1', jsonMode: 'json_object' },
+  { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', fast: 'gpt-5.4-mini', deep: 'gpt-5.4', jsonMode: 'json_object' },
+  { label: 'Anthropic (OpenAI-compatible)', baseUrl: 'https://api.anthropic.com/v1', fast: 'claude-haiku-5-5', deep: 'claude-opus-5-5', jsonMode: 'prompt_only' },
+  { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', fast: 'openai/gpt-5.4-mini', deep: 'openai/gpt-5.4', jsonMode: 'json_object' },
   { label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', fast: 'llama3.1', deep: 'llama3.1', jsonMode: 'json_object' },
 ];
 

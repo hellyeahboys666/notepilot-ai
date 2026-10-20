@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chatCompletion, AIError } from '../src/ai/client';
+import { chatCompletion, AIError, knownQuirks } from '../src/ai/client';
 import { createPipelines, type ResponseCache } from '../src/ai/pipelines';
 import { UsageTracker } from '../src/ai/usage';
 import { DEFAULT_SETTINGS, type Settings, isAIConfigured } from '../src/core/settings';
@@ -39,6 +39,22 @@ describe('chatCompletion', () => {
     expect(bodies[2]).not.toHaveProperty('temperature');
   });
 
+  it('sends known parameter shapes to current reasoning models on the first request', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl = async (_: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init!.body)));
+      return ok('{}');
+    };
+    for (const model of ['gpt-5.4-mini', 'openai/gpt-5.4', 'claude-haiku-5-5']) {
+      await chatCompletion(settings.ai, { model, messages: [], maxTokens: 5, temperature: 0.2, jsonMode: 'prompt_only' }, fetchImpl as typeof fetch);
+    }
+    expect(bodies).toHaveLength(3);
+    expect(bodies[0]).toMatchObject({ max_completion_tokens: 5 });
+    expect(bodies[1]).toMatchObject({ max_completion_tokens: 5 });
+    for (const b of bodies) expect(b).not.toHaveProperty('temperature');
+    expect(knownQuirks('https://api.example.com/v1/chat/completions', 'llama3.1')).toEqual({});
+  });
+
   it('maps HTTP errors to typed errors', async () => {
     const run = (status: number, headers: Record<string, string> = {}) =>
       chatCompletion(settings.ai, { model: 'm', messages: [], maxTokens: 5, jsonMode: 'prompt_only' }, async () => new Response('{}', { status, headers })).catch((e) => e as AIError) as Promise<AIError>;
@@ -74,7 +90,7 @@ describe('pipelines', () => {
     const r = await p.rewrite([{ role: 'user', content: 'x' }], new AbortController().signal);
     expect(r.ops).toEqual([{ op: 'delete_unit', id: 'u_1' }]);
     expect((sent[1] as { content: string }[]).at(-1)!.content).toMatch(/could not be used/);
-    expect(usage.get().costUSD).toBeCloseTo(0.8); // 2 calls × 1M input tokens × $0.40
+    expect(usage.get().costUSD).toBeCloseTo(1.5); // 2 calls × 1M input tokens × $0.75
     expect(usage.overBudget(0.5)).toBe(true);
     const again = await p.rewrite([{ role: 'user', content: 'x' }], new AbortController().signal);
     expect(again.cached).toBe(true);
