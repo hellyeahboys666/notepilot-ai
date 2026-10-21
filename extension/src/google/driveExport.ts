@@ -20,6 +20,8 @@ export class ExportError extends Error {
   constructor(
     readonly kind: ExportErrorKind,
     message: string,
+    /** Google's error reason, e.g. "appNotAuthorizedToFile". */
+    readonly reason = '',
   ) {
     super(message);
     this.name = 'ExportError';
@@ -84,12 +86,11 @@ export async function saveAsGoogleDoc(opts: SaveOptions): Promise<SavedDoc> {
       const f = (await res.json()) as { id: string; webViewLink?: string; trashed?: boolean };
       if (!f.trashed && f.id === existing) return { fileId: f.id, url: f.webViewLink ?? docUrl(f.id), created: false };
       // The companion doc is in the trash: leave it there and create a fresh one.
-    } else if (res.status !== 404 && res.status !== 403) {
-      throw await toError(res);
-    } else if (res.status === 403) {
+    } else if (res.status !== 404) {
       const err = await toError(res);
-      // 403 because the file was deleted/not ours ⇒ make a new one; API disabled etc. ⇒ report.
-      if (err.kind !== 'forbidden') throw err;
+      // Make a new doc only when the old one is gone (404, trash) or NotePilot may no longer change
+      // it. Anything else is reported: a new doc per click would leave a trail of copies in Drive.
+      if (!(res.status === 403 && NOT_OURS.has(err.reason))) throw err;
     }
   }
 
@@ -103,6 +104,9 @@ export async function saveAsGoogleDoc(opts: SaveOptions): Promise<SavedDoc> {
   if (!f.id || f.id === opts.sourceDocId) throw new ExportError('refused', 'Unexpected response from Google Drive.');
   return { fileId: f.id, url: f.webViewLink ?? docUrl(f.id), created: true };
 }
+
+/** 403 reasons meaning the companion doc exists but NotePilot can no longer change it. */
+const NOT_OURS = new Set(['appNotAuthorizedToFile', 'insufficientFilePermissions']);
 
 export const docUrl = (id: string) => `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
 
@@ -134,6 +138,6 @@ async function toError(res: Response): Promise<ExportError> {
   if (res.status === 429 || (res.status === 403 && /rateLimit|userRateLimit/i.test(reason))) {
     return new ExportError('rate_limit', 'Google Drive is busy. Wait a minute and try again.');
   }
-  if (res.status === 403 || res.status === 404) return new ExportError('forbidden', message || 'Google Drive refused the request.');
-  return new ExportError('server', `Google Drive error ${res.status}${message ? `: ${message}` : ''}`);
+  if (res.status === 403 || res.status === 404) return new ExportError('forbidden', message || 'Google Drive refused the request.', reason);
+  return new ExportError('server', `Google Drive error ${res.status}${message ? `: ${message}` : ''}`, reason);
 }

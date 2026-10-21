@@ -10,7 +10,7 @@ What was verified while building NotePilot AI, how, and what could not be verifi
 | Extension ID pinning for OAuth | ✅ Verified | `setup:oauth` predicts the ID, and Chromium assigned exactly that ID when loading the build |
 | Docs API → organized notes pipeline | ✅ Verified (simulated backend) | Real built extension in real Chromium; `docs.googleapis.com` requests routed to a mutable fake document with the documented REST response shape |
 | Spec §15 acceptance workflow, steps 1–11 | ✅ Verified (scripted model) | Engine-level simulation (`tests/acceptance.test.ts`) and the browser E2E run (`e2e/run-e2e.mjs`, 21/21 checks) |
-| Summary + companion Google Doc | ✅ Verified (simulated Drive) | Built extension in Chromium: *Summarize* shows the summary in the notes' outline (same numbers, titles and order as the notes), its section headings navigate, the Drive upload request is a `POST` that creates a Google Doc (summary, notes, insights), a second click `PATCH`es the same doc, and the notes doc is never a target. Unit tests cover deleted/trashed docs, a disabled Drive API, refused permission and token refresh |
+| Summary + companion Google Doc | ✅ Verified (simulated Drive) | Built extension in Chromium: *Summarize* shows the summary in the notes' outline (same numbers, titles and order as the notes), its section headings navigate, the Drive upload request is a `POST` that creates a Google Doc (summary, notes, insights), a second click `PATCH`es the same doc, and the notes doc is never a target. Opening the companion doc in a tab keeps the panel on the notes it came from (recognized by its saved id, or by its "— NotePilot notes" name), so it is never rewritten or summarized itself. A new doc is made only when the old one was deleted, trashed or can no longer be changed by NotePilot; any other Drive error is reported instead. Unit tests cover deleted/trashed docs, a disabled Drive API, refused permission and token refresh |
 | Original doc never modified | ✅ Verified | Every Docs request in the E2E run was `GET`; Drive requests only ever targeted the companion doc. Static tests forbid Docs write endpoints, any Docs write scope, any Drive scope other than `drive.file` and any Drive endpoint other than upload |
 | Robustness (staleness, cancellation, back-off, offline, invalid output, budget, consent, persistence, long docs) | ✅ Verified | `tests/engine.test.ts` (17 tests, fake timers) |
 | Proxy server | ✅ Verified | `server/tests/app.test.ts` (7 tests over real HTTP) |
@@ -20,7 +20,7 @@ What was verified while building NotePilot AI, how, and what could not be verifi
 
 ## Test inventory (all passing)
 
-- **Extension:** 97 tests in 10 files: docParser 5, identity 7, patch 18, context 6, completion 12, summaryExport 16, acceptance 2, engine 17, ai 9, readonly 5.
+- **Extension:** 100 tests in 10 files: docParser 5, identity 7, patch 18, context 6, completion 12, summaryExport 19, acceptance 2, engine 17, ai 9, readonly 5.
 - **Server:** 7 tests.
 - **Browser E2E:** 21 checks, built extension in Chromium 141 (headless):
   1. organizes unstructured notes automatically

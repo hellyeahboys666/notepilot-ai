@@ -10,6 +10,7 @@ import { DRIVE_FILE_SCOPE, DOCS_READONLY_SCOPE, type AuthProvider } from '../src
 import { ExportError, saveAsGoogleDoc } from '../src/google/driveExport';
 import { buildExportHtml, exportDocName } from '../src/sidepanel/exportHtml';
 import { createPipelines } from '../src/ai/pipelines';
+import { classifyTab, isCompanionTitle } from '../src/core/companion';
 import { UsageTracker } from '../src/ai/usage';
 
 const O = '\u27E6';
@@ -177,6 +178,27 @@ describe('Google Doc content', () => {
   });
 });
 
+describe('the companion doc open in a tab', () => {
+  const NOTES = 'https://docs.google.com/document/d/NOTES_DOC_0123456789abcdef/edit';
+  const COMPANION_ID = 'COMPANION_0123456789abcdef';
+  const COMPANION = `https://docs.google.com/document/d/${COMPANION_ID}/edit`;
+  const known = async (id: string) => (id === COMPANION_ID ? 'NOTES_DOC_0123456789abcdef' : null);
+  const none = async () => null;
+
+  it('is never followed as notes: the panel shows the notes it was made from', async () => {
+    expect(await classifyTab({ url: COMPANION, title: 'Anything' }, known)).toEqual({ kind: 'companion', sourceDocId: 'NOTES_DOC_0123456789abcdef' });
+    expect(await classifyTab({ url: NOTES, title: 'Bio notes - Google Docs' }, known)).toEqual({ kind: 'doc', docId: 'NOTES_DOC_0123456789abcdef' });
+    expect(await classifyTab({ url: 'https://example.com/', title: 'x' }, known)).toEqual({ kind: 'other' });
+  });
+
+  it('is recognized by its name when this device does not know it', async () => {
+    const title = `${exportDocName(emptyOrganizedDoc('d'), 'Cellular Respiration')} - Google Docs`;
+    expect(isCompanionTitle(title)).toBe(true);
+    expect(await classifyTab({ url: COMPANION, title }, none)).toEqual({ kind: 'companion', sourceDocId: null });
+    expect(isCompanionTitle('NotePilot notes on testing - Google Docs')).toBe(false);
+  });
+});
+
 describe('saving the Google Doc', () => {
   const auth = (): AuthProvider & { scopes: string[][] } => {
     const scopes: string[][] = [];
@@ -221,6 +243,17 @@ describe('saving the Google Doc', () => {
     expect((await saveAsGoogleDoc({ html: 'x', name: 'N', sourceDocId: 'SRC', existingFileId: 'OLD', auth: auth(), fetchImpl: deleted as never })).fileId).toBe('NEW4');
     const trashed = vi.fn().mockResolvedValueOnce(json(200, { id: 'OLD', trashed: true })).mockResolvedValueOnce(json(200, { id: 'NEW5' }));
     expect((await saveAsGoogleDoc({ html: 'x', name: 'N', sourceDocId: 'SRC', existingFileId: 'OLD', auth: auth(), fetchImpl: trashed as never })).fileId).toBe('NEW5');
+  });
+
+  it('makes a new doc when NotePilot may no longer change the old one, but reports other errors instead of making copies', async () => {
+    const notOurs = vi.fn().mockResolvedValueOnce(json(403, { error: { message: 'The user has not granted the app write access', errors: [{ reason: 'appNotAuthorizedToFile' }] } })).mockResolvedValueOnce(json(200, { id: 'NEW6' }));
+    expect((await saveAsGoogleDoc({ html: 'x', name: 'N', sourceDocId: 'SRC', existingFileId: 'OLD', auth: auth(), fetchImpl: notOurs as never })).fileId).toBe('NEW6');
+    for (const [status, reason] of [[403, 'forbidden'], [400, 'badRequest'], [500, 'backendError']] as const) {
+      const failing = vi.fn(async () => json(status, { error: { message: 'Nope', errors: [{ reason }] } }));
+      await expect(saveAsGoogleDoc({ html: 'x', name: 'N', sourceDocId: 'SRC', existingFileId: 'OLD', auth: auth(), fetchImpl: failing as never })).rejects.toBeInstanceOf(ExportError);
+      expect(failing, `${status} ${reason}`).toHaveBeenCalledTimes(1);
+      expect((failing.mock.calls[0] as unknown as [string, RequestInit])[1].method).toBe('PATCH');
+    }
   });
 
   it('explains a disabled Drive API and a refused permission', async () => {

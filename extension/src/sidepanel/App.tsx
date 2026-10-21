@@ -46,7 +46,9 @@ export function App() {
       {view && !needsSetup && <StatusBanner view={view} settings={settings} update={update} controls={controls} docId={active.docId} openSettings={() => setTab('settings')} />}
       {!active.activeTabIsDoc && active.docId && view && (
         <div className="border-b border-ink-100 bg-ink-50 px-4 py-1.5 text-[11.5px] text-ink-500 dark:border-ink-900 dark:bg-ink-900 dark:text-ink-400">
-          Showing “{view.title}”. Switch to a Google Doc tab to follow it.
+          {active.activeTabIsCompanion
+            ? `This tab is NotePilot's Google Doc. Showing your notes, “${view.title}”.`
+            : `Showing “${view.title}”. Switch to a Google Doc tab to follow it.`}
         </div>
       )}
       <main className="np-scroll relative flex-1">

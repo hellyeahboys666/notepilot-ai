@@ -74,9 +74,24 @@ export const extrasStore = {
     }
   },
   async put(extras: DocExtras): Promise<void> {
+    // Known right away, before the write lands: the user may open the doc the moment its link appears.
+    if (extras.exportDoc) companions.set(extras.exportDoc.fileId, extras.docId);
     await (await db()).put('extras', extras);
   },
+  /** The notes doc that a NotePilot companion doc was made from, or null when `fileId` is not one. */
+  async sourceOfCompanion(fileId: string): Promise<string | null> {
+    const known = companions.get(fileId);
+    if (known) return known;
+    try {
+      const all = await (await db()).getAll('extras');
+      return all.find((x) => x.exportDoc?.fileId === fileId)?.docId ?? null;
+    } catch {
+      return null;
+    }
+  },
 };
+
+const companions = new Map<string, string>();
 
 /** Non-persistent store used when "Store organized notes on this device" is off, and in tests. */
 export function memoryStore(): DocStore {

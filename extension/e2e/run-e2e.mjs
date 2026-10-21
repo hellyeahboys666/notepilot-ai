@@ -290,6 +290,15 @@ try {
   });
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(shots, '10-summary.png') });
+  {
+    // The whole card, in a viewport tall enough that nothing scrolls.
+    const vp = page.viewportSize();
+    await page.setViewportSize({ width: vp.width, height: 2600 });
+    await scroller.evaluate((el) => (el.scrollTop = 0));
+    await page.waitForTimeout(200);
+    await page.getByTestId('summary-card').screenshot({ path: join(shots, '10b-summary-card.png') });
+    await page.setViewportSize(vp);
+  }
 
   await check('summary section headings link to their sections in the notes', async () => {
     const secId = await page.evaluate(() => Object.values(window.__npView.organized.sections).find((s) => s.title === 'Anaerobic Metabolism').id);

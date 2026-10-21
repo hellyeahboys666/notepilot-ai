@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import { COMPANION_SUFFIX } from '../core/companion';
 import { CATEGORY_LABEL } from '../core/export';
 import { FILL_CLASS, remarkFills } from '../core/fills';
 import { CATEGORY_ORDER } from '../core/insights';
@@ -259,5 +260,5 @@ export function buildExportHtml(input: ExportInput): string {
 }
 
 export function exportDocName(doc: OrganizedDoc, sourceTitle: string): string {
-  return `${(doc.title || sourceTitle || 'Notes').slice(0, 120)} — NotePilot notes`;
+  return `${(doc.title || sourceTitle || 'Notes').slice(0, 120)}${COMPANION_SUFFIX}`;
 }
