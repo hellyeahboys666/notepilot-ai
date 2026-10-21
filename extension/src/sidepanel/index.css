@@ -135,7 +135,7 @@ body {
   @apply my-3 border-ink-200 dark:border-ink-800;
 }
 
-/* Markdown rendered inline (summary key points followed by section chips). */
+/* Markdown rendered inline (summary review items followed by section chips, term meanings). */
 .np-inline,
 .np-inline p {
   display: inline;

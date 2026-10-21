@@ -7,7 +7,7 @@ import { loadCollapsed, saveCollapsed } from '../../storage/settingsStore';
 import { Markdown } from './Markdown';
 import { SummaryCard } from './SummaryCard';
 import type { SummaryControls, SummaryState } from '../hooks/useSummary';
-import { Badge, Icon, Segmented, cx, relativeTime } from './ui';
+import { Badge, Icon, Segmented, cx, relativeTime, sectionHeadingClass } from './ui';
 
 const FRESH_MS = 30_000;
 
@@ -283,9 +283,7 @@ const SectionRow = memo(function SectionRow({
           aria-expanded={!collapsed}
           className={cx(
             'np-focus -ml-4 flex w-[calc(100%+1rem)] items-baseline gap-1 rounded text-left',
-            depth === 1 && 'border-b border-ink-100 pb-1 text-[15.5px] font-semibold tracking-[-0.01em] text-ink-900 dark:border-ink-800 dark:text-ink-50',
-            depth === 2 && 'text-[13.5px] font-semibold text-ink-800 dark:text-ink-100',
-            depth >= 3 && 'text-[12.5px] font-semibold text-ink-600 dark:text-ink-300',
+            sectionHeadingClass(depth),
             unsorted && 'text-ink-500 dark:text-ink-400',
           )}
         >

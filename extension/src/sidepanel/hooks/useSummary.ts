@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AIError } from '../../ai/client';
 import { buildSummaryMessages } from '../../core/context';
 import type { Settings } from '../../core/settings';
-import type { DocSummary } from '../../core/summary';
+import { isCurrentSummary, type DocSummary } from '../../core/summary';
 import { hash53 } from '../../core/text';
 import type { EngineView } from '../../engine/state';
 import { auth, EXPORT_SCOPES } from '../../google/auth';
@@ -63,7 +63,7 @@ export function useSummary(docId: string | null): [SummaryState, SummaryControls
     if (!docId) return;
     let alive = true;
     void extrasStore.get(docId).then((x) => {
-      if (alive && x) setState((s) => ({ ...s, summary: x.summary ?? null, exportDoc: x.exportDoc ?? null }));
+      if (alive && x) setState((s) => ({ ...s, summary: isCurrentSummary(x.summary) ? x.summary : null, exportDoc: x.exportDoc ?? null }));
     });
     return () => {
       alive = false;

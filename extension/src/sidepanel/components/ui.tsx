@@ -4,6 +4,15 @@ export function cx(...c: (string | false | null | undefined)[]): string {
   return c.filter(Boolean).join(' ');
 }
 
+/** Section heading type, shared by the organized notes and the summary so both read the same. */
+export function sectionHeadingClass(depth: number): string {
+  return cx(
+    depth === 1 && 'border-b border-ink-100 pb-1 text-[15.5px] font-semibold tracking-[-0.01em] text-ink-900 dark:border-ink-800 dark:text-ink-50',
+    depth === 2 && 'text-[13.5px] font-semibold text-ink-800 dark:text-ink-100',
+    depth >= 3 && 'text-[12.5px] font-semibold text-ink-600 dark:text-ink-300',
+  );
+}
+
 const paths: Record<string, ReactNode> = {
   chevron: <path d="M6 4l4 4-4 4" />,
   outline: (

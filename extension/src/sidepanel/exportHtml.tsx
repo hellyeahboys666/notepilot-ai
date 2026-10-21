@@ -151,22 +151,15 @@ function ExportDocument(p: ExportInput) {
           <>
             <h1>Summary</h1>
             <Md text={summary.overview} />
-            {summary.keyPoints.length > 0 && (
-              <>
-                <h2>Key points</h2>
-                <ul>
-                  {summary.keyPoints.map((k, i) => (
-                    <li key={i}>
-                      <MdInline text={k.text} />
-                      <SeeAlso doc={doc} ids={k.sectionIds} />
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+            {summary.sections.map((sec) => (
+              <div key={sec.sectionId}>
+                <H level={sec.depth + 1}>{sec.title}</H>
+                {sec.content && <Md text={sec.content} />}
+              </div>
+            ))}
             {summary.keyTerms.length > 0 && (
               <>
-                <h2>Key terms</h2>
+                <h2>Key Terms</h2>
                 <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                   <thead>
                     <tr>
@@ -189,7 +182,7 @@ function ExportDocument(p: ExportInput) {
             )}
             {summary.review.length > 0 && (
               <>
-                <h2>Review next</h2>
+                <h2>Review Next</h2>
                 <ul>
                   {summary.review.map((r, i) => (
                     <li key={i}>

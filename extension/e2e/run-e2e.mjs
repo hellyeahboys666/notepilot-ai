@@ -257,11 +257,23 @@ try {
   await page.screenshot({ path: join(shots, '05-original-view.png') });
   await page.getByRole('radio', { name: 'Organized' }).click();
 
-  await check('Summarize shows a concise summary and saves notes, insights and summary to a new Google Doc', async () => {
+  await check('Summarize shows a concise summary in the notes\' outline and saves notes, insights and summary to a new Google Doc', async () => {
     await scroller.evaluate((el) => (el.scrollTop = 0));
     await page.getByRole('button', { name: /^Summarize/ }).click();
     const card = page.getByTestId('summary-card');
     await card.getByText(/Cells release energy from glucose in stages/).waitFor({ timeout: 30_000 });
+    // Same outline as the organized notes: the notes' numbers and titles, in the notes' order.
+    const noteHeadings = await page.evaluate(() =>
+      Object.fromEntries([...document.querySelectorAll('article [id^="np-sec-"] button')].map((b) => [b.querySelector('span.min-w-0')?.textContent, b.textContent.replace(/\s+/g, ' ').trim()])),
+    );
+    const summaryHeadings = (await card.getByTestId('summary-section').locator('h3, h4, h5').allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
+    const titles = summaryHeadings.map((h) => h.replace(/^[\d.]+\s*/, ''));
+    for (const t of ['Glycolysis', 'Anaerobic Metabolism', 'Citric Acid Cycle', 'Electron Transport Chain']) assert.ok(titles.includes(t), `summary is missing ${t}`);
+    for (const h of summaryHeadings) assert.equal(h, noteHeadings[h.replace(/^[\d.]+\s*/, '')], `summary heading "${h}" matches the notes`);
+    const order = Object.keys(noteHeadings).filter((t) => titles.includes(t));
+    assert.deepEqual(titles, order, 'summary sections follow the notes order');
+    assert.equal(await card.locator('table').count(), 2, 'a compact table and the key terms table');
+    assert.equal(await card.locator('ol > li').count(), 3, 'numbered steps');
     const open = card.getByRole('link', { name: /Open/ });
     await open.waitFor({ timeout: 30_000 });
     assert.equal(await open.getAttribute('href'), 'https://docs.google.com/document/d/e2e-companion-doc/edit');
@@ -270,7 +282,7 @@ try {
     assert.equal(first.method, 'POST');
     assert.match(first.url, /^https:\/\/www\.googleapis\.com\/upload\/drive\/v3\/files\?uploadType=multipart/);
     assert.ok(first.body.includes('application/vnd.google-apps.document'));
-    for (const part of ['<h1>Summary</h1>', '<h2>Key points</h2>', '<h1>Organized notes</h1>', 'Anaerobic Metabolism', '<h1>Insights</h1>', 'Check your understanding']) assert.ok(first.body.includes(part), `doc is missing ${part}`);
+    for (const part of ['<h1>Summary</h1>', '<h2>Key Terms</h2>', '<h1>Organized notes</h1>', 'Anaerobic Metabolism', '<h1>Insights</h1>', 'Check your understanding']) assert.ok(first.body.includes(part), `doc is missing ${part}`);
     assert.equal(aiLog.filter((e) => e.kind === 'summary').length, 1);
     // Keep the HTML that Google Drive would convert, for inspection.
     const html = first.body.slice(first.body.indexOf('<!DOCTYPE html>'), first.body.lastIndexOf('</html>') + 7);
@@ -279,7 +291,7 @@ try {
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(shots, '10-summary.png') });
 
-  await check('summary key points link to their sections', async () => {
+  await check('summary section headings link to their sections in the notes', async () => {
     const secId = await page.evaluate(() => Object.values(window.__npView.organized.sections).find((s) => s.title === 'Anaerobic Metabolism').id);
     const before = await scroller.evaluate((el) => el.scrollTop);
     await page.getByTestId('summary-card').getByRole('button', { name: 'Anaerobic Metabolism' }).first().click();

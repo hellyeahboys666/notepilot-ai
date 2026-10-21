@@ -1,7 +1,8 @@
+import type { SummarySection } from '../../core/summary';
 import type { OrganizedDoc } from '../../core/types';
 import type { SummaryState } from '../hooks/useSummary';
 import { Markdown } from './Markdown';
-import { Icon, cx, relativeTime } from './ui';
+import { Icon, cx, relativeTime, sectionHeadingClass } from './ui';
 
 /** The on-demand summary shown at the top of the organized notes, with the companion Google Doc. */
 export function SummaryCard({
@@ -46,7 +47,7 @@ export function SummaryCard({
       {error && <p className="mt-2 text-[12px] text-red-700 dark:text-red-300">{error}</p>}
 
       {summary && phase !== 'summarizing' && (
-        <div className="mt-1.5 space-y-3">
+        <div className="mt-2 space-y-4">
           {stale && (
             <p className="flex items-center gap-1.5 text-[11.5px] text-amber-700 dark:text-amber-300">
               <Icon name="warn" className="h-3 w-3 shrink-0" /> Your notes changed since this summary.
@@ -55,60 +56,59 @@ export function SummaryCard({
               </button>
             </p>
           )}
-          <Markdown text={summary.overview} className="np-prose-sm" />
+          <div className="rounded-md border-l-2 border-amber-300 bg-amber-50/50 px-3 py-2 dark:bg-amber-400/5">
+            <Markdown text={summary.overview} markFills={false} />
+          </div>
 
-          {summary.keyPoints.length > 0 && (
-            <div>
-              <h3 className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">Key points</h3>
-              <ul className="mt-1 space-y-1.5">
-                {summary.keyPoints.map((k, i) => (
-                  <li key={i} className="flex gap-2 text-[12.5px] leading-snug text-ink-700 dark:text-ink-300">
-                    <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-ink-400" />
-                    <div className="min-w-0">
-                      <Markdown text={k.text} className="np-prose-sm np-inline" />
-                      <SectionChips ids={k.sectionIds} doc={doc} onGo={onGo} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <div>
+            {summary.sections.map((s) => (
+              <SummarySectionRow key={s.sectionId} section={s} live={!!doc.sections[s.sectionId]} onGo={onGo} />
+            ))}
+          </div>
 
           {summary.keyTerms.length > 0 && (
-            <details open={summary.keyTerms.length <= 5} className="group">
-              <summary className="np-focus cursor-pointer list-none text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">
-                <span className="inline-flex items-center gap-1">
-                  <Icon name="chevron" className="h-2.5 w-2.5 transition-transform group-open:rotate-90" /> Key terms ({summary.keyTerms.length})
-                </span>
-              </summary>
-              <dl className="mt-1 space-y-1">
-                {summary.keyTerms.map((t, i) => (
-                  <div key={i} className="text-[12.5px] leading-snug">
-                    <dt className="inline font-semibold text-ink-900 dark:text-ink-50">
-                      {t.sectionIds[0] ? (
-                        <button type="button" className="np-focus hover:underline" onClick={() => onGo(t.sectionIds[0])}>
-                          {t.term}
-                        </button>
-                      ) : (
-                        t.term
-                      )}
-                    </dt>
-                    <dd className="inline text-ink-600 dark:text-ink-300"> — {t.definition}</dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
+            <div>
+              <h3 className={cx('m-0', sectionHeadingClass(1))}>Key Terms</h3>
+              <div className="np-prose mt-2 overflow-x-auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Term</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.keyTerms.map((t, i) => (
+                      <tr key={i}>
+                        <td className="font-semibold">
+                          {t.sectionIds[0] && doc.sections[t.sectionIds[0]] ? (
+                            <button type="button" className="np-focus text-left hover:underline" onClick={() => onGo(t.sectionIds[0])} title={`Go to “${doc.sections[t.sectionIds[0]].title}”`}>
+                              {t.term}
+                            </button>
+                          ) : (
+                            t.term
+                          )}
+                        </td>
+                        <td>
+                          <Markdown text={t.definition} className="np-inline" markFills={false} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {summary.review.length > 0 && (
             <div>
-              <h3 className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">Review next</h3>
-              <ul className="mt-1 space-y-1">
+              <h3 className={cx('m-0', sectionHeadingClass(1))}>Review Next</h3>
+              <ul className="mt-2 space-y-1">
                 {summary.review.map((r, i) => (
-                  <li key={i} className="flex gap-2 text-[12.5px] leading-snug text-ink-700 dark:text-ink-300">
-                    <Icon name="gap" className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" />
+                  <li key={i} className="flex gap-2">
+                    <Icon name="gap" className="mt-1 h-3 w-3 shrink-0 text-amber-600" />
                     <div className="min-w-0">
-                      <Markdown text={r.text} className="np-prose-sm np-inline" />
+                      <Markdown text={r.text} className="np-prose np-inline" markFills={false} />
                       <SectionChips ids={r.sectionIds} doc={doc} onGo={onGo} />
                     </div>
                   </li>
@@ -162,5 +162,34 @@ function SectionChips({ ids, doc, onGo }: { ids: string[]; doc: OrganizedDoc; on
         </button>
       ))}
     </span>
+  );
+}
+
+/** One section of the summary, laid out like the same section in the organized notes. */
+function SummarySectionRow({ section: s, live, onGo }: { section: SummarySection; live: boolean; onGo: (id: string) => void }) {
+  const Tag = s.depth === 1 ? 'h3' : s.depth === 2 ? 'h4' : 'h5';
+  const heading = (
+    <>
+      {s.number && <span className="mr-1 font-normal tabular-nums text-ink-300 dark:text-ink-600">{s.number}</span>}
+      <span className="min-w-0 flex-1">{s.title}</span>
+    </>
+  );
+  return (
+    <div className={cx(s.depth === 1 ? 'mt-4 first:mt-0' : s.depth === 2 ? 'mt-3' : 'mt-2')} style={{ paddingLeft: (s.depth - 1) * 10 }} data-testid="summary-section">
+      <Tag className={cx('m-0 flex items-baseline gap-1', sectionHeadingClass(s.depth))}>
+        {live ? (
+          <button type="button" onClick={() => onGo(s.sectionId)} title="Go to this section in your notes" className="np-focus flex min-w-0 flex-1 items-baseline gap-1 rounded text-left hover:underline hover:decoration-ink-300 hover:underline-offset-4">
+            {heading}
+          </button>
+        ) : (
+          heading
+        )}
+      </Tag>
+      {s.content && (
+        <div className="mt-1.5">
+          <Markdown text={s.content} markFills={false} />
+        </div>
+      )}
+    </div>
   );
 }

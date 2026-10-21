@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildRewriteMessages, buildSummaryMessages } from '../src/core/context';
 import { DEFAULT_SETTINGS } from '../src/core/settings';
-import { parseSummaryResponse, type DocSummary } from '../src/core/summary';
+import { isCurrentSummary, parseSummaryResponse, SUMMARY_LIMITS, type DocSummary } from '../src/core/summary';
 import { applyPatch } from '../src/core/patch';
 import { latexToHtml } from '../src/core/latexText';
 import { emptyOrganizedDoc, type Insight, type OrganizedDoc } from '../src/core/types';
@@ -52,39 +52,69 @@ describe('summary', () => {
   const doc = sampleDoc();
   const sec = Object.values(doc.sections).find((s) => s.title === 'Bond Types')!.id;
 
-  it('validates output, drops unknown section ids, and enforces limits', () => {
+  const root = Object.values(doc.sections).find((s) => s.title === 'Chemical Bonds')!.id;
+
+  it('follows the notes outline: same order, titles and numbers, with parent headings kept', () => {
     const s = parseSummaryResponse(
       {
-        overview: 'Bonds hold atoms together; ionic and covalent bonds differ in how electrons are handled.',
-        key_points: Array.from({ length: 12 }, (_, i) => ({ text: `Point ${i}`, sections: [sec, 'sec_missing'] })),
-        key_terms: [{ term: 'Covalent bond', definition: 'Electrons are shared.', sections: [sec] }],
+        overview: `Bonds hold atoms together; ${O}ionic${C} and covalent bonds differ in how electrons are handled.`,
+        sections: [
+          { section: 'sec_missing', content: '- Not in the notes' },
+          { section: sec, content: `## Bond Types\n| Bond | Electrons |\n|---|---|\n| **Ionic** | ${O}transferred${C} |\n| **Covalent** | shared |` },
+          { section: sec, content: '- A second entry for the same section' },
+        ],
+        key_terms: Array.from({ length: 12 }, (_, i) => ({ term: `Term ${i}`, definition: 'Meaning.', sections: [sec, 'sec_missing'] })),
+        review: Array.from({ length: 5 }, (_, i) => ({ text: `Review ${i}`, sections: [] })),
       },
       doc,
       42,
     );
-    expect(s.keyPoints).toHaveLength(7);
-    expect(s.keyPoints[0].sectionIds).toEqual([sec]);
-    expect(s.review).toEqual([]);
+    expect(s.sections).toEqual([
+      { sectionId: root, title: 'Chemical Bonds', number: '1', depth: 1, content: null },
+      { sectionId: sec, title: 'Bond Types', number: '1.1', depth: 2, content: '| Bond | Electrons |\n|---|---|\n| **Ionic** | transferred |\n| **Covalent** | shared |' },
+    ]);
+    expect(s.overview).not.toMatch(/[⟦⟧]/);
+    expect(s.keyTerms).toHaveLength(SUMMARY_LIMITS.keyTerms);
+    expect(s.keyTerms[0].sectionIds).toEqual([sec]);
+    expect(s.review).toHaveLength(SUMMARY_LIMITS.review);
     expect(s.orgVersion).toBe(doc.version);
     expect(s.createdAt).toBe(42);
-    expect(() => parseSummaryResponse({ key_points: [] }, doc)).toThrow();
+    expect(isCurrentSummary(s)).toBe(true);
+  });
+
+  it('keeps section text short without breaking lists or tables', () => {
+    const bullets = Array.from({ length: 40 }, (_, i) => `- Point number ${i} about bonds`).join('\n');
+    const short = parseSummaryResponse({ overview: 'O.', sections: [{ section: sec, content: bullets }] }, doc).sections[1].content!;
+    expect(short.length).toBeLessThanOrEqual(SUMMARY_LIMITS.sectionChars);
+    expect(short.split('\n').every((l) => /^- Point number \d+ about bonds$/.test(l))).toBe(true);
+    const cutTable = `- Lead-in\n| A | B |\n|---|---|\n| ${'x'.repeat(950)} | y |`;
+    expect(parseSummaryResponse({ overview: 'O.', sections: [{ section: sec, content: cutTable }] }, doc).sections[1].content).toBe('- Lead-in');
+  });
+
+  it('rejects summaries that do not follow the notes, and ignores summaries saved by older versions', () => {
+    expect(() => parseSummaryResponse({ overview: 'O.', sections: [{ section: 'sec_missing', content: '- a' }] }, doc)).toThrow();
+    expect(() => parseSummaryResponse({ overview: 'O.', key_points: [{ text: 'a', sections: [sec] }] }, doc)).toThrow();
+    expect(isCurrentSummary({ overview: 'O.', keyPoints: [], keyTerms: [], review: [], orgVersion: 1, createdAt: 1 })).toBe(false);
   });
 
   it('sends the organized notes and insights as data, with an injection-safe prompt', () => {
     const msgs = buildSummaryMessages({ organized: doc, insights: [insight()], settings: DEFAULT_SETTINGS }).messages;
     expect(msgs[0].content).toMatch(/untrusted data/);
     expect(msgs[0].content).toMatch(/Summarize only what the notes say/);
+    expect(msgs[0].content).toMatch(/same outline as the notes/);
+    expect(msgs[0].content).toMatch(/never write headings/);
+    expect(msgs[0].content).toMatch(/A compact table/);
     const payload = JSON.parse(msgs[1].content.slice(msgs[1].content.indexOf('{')));
     expect(payload.organized.sections.map((s: { title: string }) => s.title)).toEqual(['Chemical Bonds', 'Bond Types']);
     expect(payload.insights[0].title).toBe('Why do metals conduct?');
   });
 
   it('runs through the AI pipeline with the deeper model', async () => {
-    const chat = vi.fn(async () => ({ text: JSON.stringify({ overview: 'An overview.', key_points: [{ text: 'P', sections: [sec] }], key_terms: [] }), promptTokens: 10, completionTokens: 10, latencyMs: 5 }));
+    const chat = vi.fn(async () => ({ text: JSON.stringify({ overview: 'An overview.', sections: [{ section: sec, content: '- P' }], key_terms: [] }), promptTokens: 10, completionTokens: 10, latencyMs: 5 }));
     const settings = { ...DEFAULT_SETTINGS, ai: { ...DEFAULT_SETTINGS.ai, apiKey: 'k', fastModel: 'fast', deepModel: 'deep' } };
     const p = createPipelines(() => settings, new UsageTracker(), undefined, chat as never);
     const res = await p.summary(buildSummaryMessages({ organized: doc, insights: [], settings }).messages, doc, new AbortController().signal);
-    expect(res.summary.keyPoints[0].sectionIds).toEqual([sec]);
+    expect(res.summary.sections.map((x) => x.sectionId)).toEqual([root, sec]);
     expect((chat.mock.calls[0] as unknown[])[1]).toMatchObject({ model: 'deep' });
   });
 });
@@ -92,18 +122,22 @@ describe('summary', () => {
 describe('Google Doc content', () => {
   const doc = sampleDoc();
   const sec = Object.values(doc.sections).find((s) => s.title === 'Bond Types')!.id;
+  const root = Object.values(doc.sections).find((s) => s.title === 'Chemical Bonds')!.id;
   const summary: DocSummary = {
     overview: 'Two main bond types.',
-    keyPoints: [{ text: 'Ionic bonds **transfer** electrons.', sectionIds: [sec] }],
+    sections: [
+      { sectionId: root, title: 'Chemical Bonds', number: '1', depth: 1, content: null },
+      { sectionId: sec, title: 'Bond Types', number: '1.1', depth: 2, content: '- **Ionic** bonds transfer electrons.' },
+    ],
     keyTerms: [{ term: 'Covalent bond', definition: 'Shared electrons.', sectionIds: [sec] }],
-    review: [{ text: 'Metallic bonds are missing.', sectionIds: [] }],
+    review: [{ text: 'Metallic bonds are missing.', sectionIds: [sec] }],
     orgVersion: doc.version,
     createdAt: 1,
   };
   const html = buildExportHtml({ organized: doc, insights: [insight({ sectionIds: [sec] })], summary, sourceTitle: 'Chem notes', sourceDocId: 'SRC_DOC', includeExpansions: true, now: Date.UTC(2026, 9, 20) });
 
   it('is organized as Summary → Organized notes → Insights, with headings for the Docs outline', () => {
-    const order = ['<h1>Summary</h1>', '<h2>Key points</h2>', '<h2>Key terms</h2>', '<h2>Review next</h2>', '<h1>Organized notes</h1>', '<h2>Chemical Bonds</h2>', '<h3>Bond Types</h3>', '<h1>Insights</h1>', '<h2>Knowledge gaps</h2>'];
+    const order = ['<h1>Summary</h1>', '<h2>Chemical Bonds</h2>', '<h3>Bond Types</h3>', 'transfer electrons', '<h2>Key Terms</h2>', '<h2>Review Next</h2>', '<h1>Organized notes</h1>', '<h2>Chemical Bonds</h2>', '<h3>Bond Types</h3>', '<h1>Insights</h1>', '<h2>Knowledge gaps</h2>'];
     let at = 0;
     for (const h of order) {
       const i = html.indexOf(h, at);

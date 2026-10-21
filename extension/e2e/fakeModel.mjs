@@ -137,13 +137,16 @@ export function insights(p) {
 export function summary(p) {
   const id = (title) => p.organized.sections.find((s) => s.title === title)?.id;
   const ids = (...t) => t.map(id).filter(Boolean);
+  const entry = (title, content) => ({ section: id(title), content });
   return {
     overview: 'Cells release energy from glucose in stages: glycolysis in the cytoplasm, then the citric acid cycle and electron transport in the mitochondria. Without oxygen, fermentation keeps glycolysis going.',
-    key_points: [
-      { text: '**Glycolysis** splits glucose into pyruvate in the cytoplasm for a net **2 ATP**.', sections: ids('Glycolysis') },
-      { text: '**Fermentation** regenerates NAD⁺ so glycolysis continues without oxygen.', sections: ids('Anaerobic Metabolism') },
-      { text: 'The citric acid cycle produces NADH and FADH₂ in the matrix.', sections: ids('Citric Acid Cycle') },
-    ],
+    sections: [
+      // Deliberately out of order: NotePilot puts entries in the notes' order.
+      entry('Electron Transport Chain', '1. NADH and FADH₂ hand electrons to the chain.\n2. The chain pumps protons, building a gradient.\n3. **ATP synthase** uses the gradient to make ATP.'),
+      entry('Glycolysis', '- **Glycolysis** splits glucose into pyruvate in the cytoplasm.\n- Net yield: **2 ATP** per glucose.'),
+      entry('Anaerobic Metabolism', '- **Fermentation** regenerates NAD⁺ so glycolysis continues without oxygen.'),
+      entry('Citric Acid Cycle', '| Where | Products |\n|---|---|\n| Mitochondrial matrix | NADH, FADH₂ |'),
+    ].filter((e) => e.section),
     key_terms: [
       { term: 'ATP synthase', definition: 'Enzyme that uses the proton gradient to make ATP.', sections: ids('Electron Transport Chain') },
       { term: 'Fermentation', definition: 'Anaerobic pathway that regenerates NAD⁺.', sections: ids('Anaerobic Metabolism') },
