@@ -101,7 +101,11 @@ export function RecordStrip({
   if (asking && !origin) {
     return (
       <section aria-label="Before recording" role="alert" className={cx(shell, 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100')}>
-        <p>Choose a transcription service in Settings → Recording before recording. The on-device AI cannot transcribe audio.</p>
+        <p>
+          {settings.ai.mode === 'device' && settings.recording.endpoint === 'same'
+            ? 'Choose a transcription service in Settings → Recording before recording. The on-device AI cannot transcribe audio.'
+            : 'Enter a valid transcription service address in Settings → Recording before recording.'}
+        </p>
         <button type="button" onClick={onCancel} className="np-focus mt-2 rounded-md px-2.5 py-1 text-[11.5px] font-medium hover:bg-amber-100 dark:hover:bg-amber-400/10">Dismiss</button>
       </section>
     );

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatCompletion } from '../../ai/client';
 import { availability, download, type Availability } from '../../ai/onDevice';
-import { ON_DEVICE, PROVIDER_PRESETS, applyPreset, endpointOrigin, isAIConfigured, pacedFrequency, presetFor, type AISettings, type Settings } from '../../core/settings';
+import { ON_DEVICE, PROVIDER_PRESETS, applyPreset, endpointOrigin, isAIConfigured, keyForAddress, pacedFrequency, presetFor, presetInUse, type AISettings, type Settings } from '../../core/settings';
+import { sameTranscriptionDefaults } from '../../core/transcriptionPresets';
 import { requestEndpointPermission } from '../runtime';
 import { FreeTierNote } from './FreeTierNote';
 import { Button, Segmented, cx } from './ui';
@@ -19,6 +20,19 @@ export function Field({ label, hint, children, htmlFor }: { label: string; hint?
       {hint && <p className="text-[11px] leading-snug text-ink-400">{hint}</p>}
     </div>
   );
+}
+
+/**
+ * What a successful Connect & test saves: the connection; for a rate-limited free tier, its slower pacing (never a
+ * faster one); and recording "same as the AI connection" moved to the new service's own transcription model and price.
+ */
+export function connectedSettings(s: Settings, ai: AISettings): Settings {
+  return {
+    ...s,
+    ai,
+    frequency: ai.mode === 'direct' ? pacedFrequency(s.frequency, presetInUse(ai)) : s.frequency,
+    recording: s.recording.endpoint === 'same' && endpointOrigin(s.ai) !== endpointOrigin(ai) ? { ...s.recording, ...sameTranscriptionDefaults(ai) } : s.recording,
+  };
 }
 
 /** Configures local AI or an OpenAI-compatible endpoint. Testing uses a tiny probe — never note content. */
@@ -187,8 +201,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
       setState({ kind: 'ok', msg: `Connected · ${r.model} · ${r.latencyMs} ms` });
       // Match the existing Settings flow: only a successful test saves the draft.
       // Keep remote endpoint/key/model fields so switching back does not erase them.
-      // A free tier's rate limits slow updates to its pacing (never speeding them up).
-      update((s) => ({ ...s, ai: connection, frequency: connection.mode === 'direct' ? pacedFrequency(s.frequency, presetFor(connection)) : s.frequency }));
+      update((s) => connectedSettings(s, connection));
     } catch (e) {
       if (current()) setState({ kind: 'error', msg: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -198,6 +211,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
 
   const configured = isAIConfigured(draft);
   const preset = draft.mode === 'direct' ? presetFor(draft) : undefined;
+  const inUse = draft.mode === 'direct' ? presetInUse(draft) : undefined;
   const modelStatus = model.reason ?? {
     checking: 'Checking local model availability…',
     unavailable: 'Chrome’s built-in AI is not supported or enabled on this computer. Check the requirements above, or use a free provider preset below.',
@@ -254,7 +268,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
               value={preset?.label ?? 'custom'}
               onChange={(e) => {
                 const p = PROVIDER_PRESETS.find((x) => x.label === e.target.value);
-                if (p) set(applyPreset(p));
+                if (p) set({ ...applyPreset(p), apiKey: keyForAddress(draftRef.current.apiKey, draftRef.current.baseUrl, p.baseUrl) });
               }}
             >
               {PROVIDER_PRESETS.map((p) => (
@@ -263,9 +277,9 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
               <option value="custom">Custom (OpenAI-compatible)</option>
             </select>
           </Field>
-          {preset?.free && <FreeTierNote free={preset.free} savesFrequency={pacedFrequency(settings.frequency, preset) !== settings.frequency} />}
+          {inUse?.free && <FreeTierNote free={inUse.free} savesFrequency={pacedFrequency(settings.frequency, inUse) !== settings.frequency} />}
           <Field label="Base URL" htmlFor="np-base">
-            <input id="np-base" className={inputCls} value={draft.baseUrl} onChange={(e) => set({ baseUrl: e.target.value.trim() })} spellCheck={false} />
+            <input id="np-base" className={inputCls} value={draft.baseUrl} onChange={(e) => set({ baseUrl: e.target.value.trim(), apiKey: keyForAddress(draftRef.current.apiKey, draftRef.current.baseUrl, e.target.value.trim()) })} spellCheck={false} />
           </Field>
           <Field label="API key" hint="Stored only in this browser profile (never synced). Only sent to the base URL above." htmlFor="np-key">
             <input id="np-key" type="password" autoComplete="off" className={inputCls} value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value.trim() })} placeholder="sk-…" />

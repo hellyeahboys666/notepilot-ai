@@ -227,7 +227,9 @@ export async function chat(req: AIRequest): Promise<AIResult> {
     }
     if (req.signal?.aborted) throw cancelled();
     req.signal?.addEventListener('abort', dispose, { once: true });
+    // Chrome builds before the context* renames fire quotaoverflow.
     session.addEventListener('contextoverflow', onOverflow);
+    session.addEventListener('quotaoverflow', onOverflow);
     const options: PromptOptions = { signal: req.signal };
     if (req.jsonSchema) options.responseConstraint = req.jsonSchema.schema;
     else if (req.jsonMode !== 'prompt_only') options.responseConstraint = { type: 'object' };
@@ -267,6 +269,7 @@ export async function chat(req: AIRequest): Promise<AIResult> {
   } finally {
     req.signal?.removeEventListener('abort', dispose);
     session?.removeEventListener('contextoverflow', onOverflow);
+    session?.removeEventListener('quotaoverflow', onOverflow);
     dispose();
   }
 }

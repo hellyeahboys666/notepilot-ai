@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { endpointOrigin, transcriptionOrigin, type Settings } from '../../core/settings';
+import { endpointOrigin, keyForAddress, transcriptionOrigin, type Settings } from '../../core/settings';
 import { TRANSCRIPTION_PRESETS, applyTranscriptionPreset, sameTranscriptionDefaults, transcriptionPresetFor } from '../../core/transcriptionPresets';
 import { toMarkdown } from '../../core/export';
 import type { DailyUsage } from '../../ai/usage';
@@ -207,7 +207,7 @@ export function SettingsView({
         {s.recording.endpoint === 'custom' && (
           <>
             <Field label="Transcription address" hint="An OpenAI-compatible base URL, including /v1. Use HTTPS, or HTTP on localhost / 127.0.0.1. Audio goes here, not to the notes connection." htmlFor="np-rec-base">
-              <input id="np-rec-base" className={inputCls} value={s.recording.baseUrl} spellCheck={false} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, baseUrl: e.target.value.trim() } }))} placeholder="http://localhost:8000/v1" />
+              <input id="np-rec-base" className={inputCls} value={s.recording.baseUrl} spellCheck={false} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, baseUrl: e.target.value.trim(), apiKey: keyForAddress(x.recording.apiKey, x.recording.baseUrl, e.target.value.trim()) } }))} placeholder="http://localhost:8000/v1" />
             </Field>
             <Field label="Transcription API key" hint={transcriptionPreset?.needsKey === false ? 'Optional for the local server. Enter a key only if you configured one there.' : 'Your key for this transcription service. Stored only in this browser profile, never borrowed from the notes connection.'} htmlFor="np-rec-key">
               <input id="np-rec-key" type="password" autoComplete="off" className={inputCls} value={s.recording.apiKey} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, apiKey: e.target.value.trim() } }))} />

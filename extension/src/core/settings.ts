@@ -180,13 +180,34 @@ export const ON_DEVICE: FreeTier = {
 /** endpointOrigin() for the on-device mode: consent is still asked, for processing on this computer. */
 export const ON_DEVICE_ORIGIN = 'on-device';
 
-/** The preset the current settings come from (address and rewrite model), if any. */
-export const presetFor = (ai: Pick<AISettings, 'baseUrl' | 'fastModel' | 'deepModel'> & Partial<Pick<AISettings, 'inputPricePerM'>>): ProviderPreset | undefined =>
+/**
+ * The preset in use, matched by model and not by address alone: what its free-tier note and pacing apply to (a paid
+ * account at a free preset's address, with its own models, is not on the free tier).
+ */
+export const presetInUse = (ai: Pick<AISettings, 'baseUrl' | 'fastModel' | 'deepModel'> & Partial<Pick<AISettings, 'inputPricePerM'>>): ProviderPreset | undefined =>
   PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.fast === ai.fastModel && p.deep === ai.deepModel) ??
   PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.fast === ai.fastModel) ??
   // The free OpenRouter preset's models are typed in: a "…:free" model, or one typed after choosing it (its $0 prices still set), stays on it.
-  (ai.fastModel.endsWith(':free') || ai.inputPricePerM === 0 ? PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.free && !p.fast) : undefined) ??
-  PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl);
+  (ai.fastModel.endsWith(':free') || ai.inputPricePerM === 0 ? PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.free && !p.fast) : undefined);
+
+/** The preset to show as chosen: the one in use, else the first at the same address. */
+export const presetFor = (ai: Pick<AISettings, 'baseUrl' | 'fastModel' | 'deepModel'> & Partial<Pick<AISettings, 'inputPricePerM'>>): ProviderPreset | undefined =>
+  presetInUse(ai) ?? PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl);
+
+/** A URL's origin, or '' when it isn't one. */
+export function originOf(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return '';
+  }
+}
+
+/** A key belongs to the host it was entered for: moving to another host drops it, so it is never sent there. */
+export const keyForAddress = (key: string, from: string, to: string): string => {
+  const was = originOf(from);
+  return !was || was === originOf(to) ? key : '';
+};
 
 const EAGERNESS: Frequency[] = ['realtime', 'balanced', 'saver'];
 /** The Frequency a free preset asks for, unless the user already chose a slower one. */
@@ -244,13 +265,7 @@ export function isAIConfigured(s: AISettings): boolean {
 /** Where recordings are transcribed: the AI connection, or the separate transcription address. '' when there is none
  *  (the on-device model has no transcription). */
 export function transcriptionOrigin(s: Pick<Settings, 'ai' | 'recording'>): string {
-  if (s.recording.endpoint === 'custom') {
-    try {
-      return new URL(s.recording.baseUrl).origin;
-    } catch {
-      return '';
-    }
-  }
+  if (s.recording.endpoint === 'custom') return originOf(s.recording.baseUrl);
   return s.ai.mode === 'device' ? '' : endpointOrigin(s.ai);
 }
 

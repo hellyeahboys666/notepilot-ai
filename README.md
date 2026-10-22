@@ -95,7 +95,13 @@ launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"
 
 On Windows or Linux, set the `OLLAMA_ORIGINS` environment variable to `chrome-extension://*` for the Ollama service. Then choose **Ollama (local)** (address `http://localhost:11434/v1`, no key needed).
 
-**Free recording.** Transcription can use a different service from your notes: Settings → Recording → *Transcription*. **Groq (free tier)** runs `whisper-large-v3-turbo` free for about 8 hours of audio a day (adults only, not used for training). **Local Whisper** sends audio to an OpenAI-compatible Whisper server on your computer, such as Speaches, so recordings never leave it. Chrome's built-in AI can't transcribe, so with *On this computer* choose a transcription service before recording.
+**Free recording.** Transcription can use a different service from your notes: Settings → Recording → *Transcription* (each service has its own address and key, and recording asks for your OK again when the address changes). **Groq (free tier)** runs `whisper-large-v3-turbo` free for about 8 hours of audio a day (adults only, not used for training). **Local Whisper (free, private)** sends audio to a [Speaches](https://speaches.ai) server on your computer (`http://localhost:8000/v1`), so recordings never leave it; download its model once:
+
+```bash
+uvx speaches-cli model download Systran/faster-whisper-small
+```
+
+**Mistral (Voxtral Mini)** costs about $0.003 a minute. Chrome's built-in AI can't transcribe, so with *On this computer* choose a transcription service before recording.
 
 ---
 

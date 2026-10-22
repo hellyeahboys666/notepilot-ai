@@ -21,8 +21,8 @@ What was verified while building NotePilot AI, how, and what could not be verifi
 
 ## Test inventory (all passing)
 
-- **Extension:** 126 tests in 12 files: docParser 5, identity 7, patch 18, context 6, completion 12, summaryExport 19, acceptance 2, engine 17, ai 9, writes 6, recording 20, recorder 5.
-- **Server:** 7 tests.
+- **Extension:** 278 tests in 15 files: docParser 5, identity 7, patch 21, context 7, completion 12, summaryExport 19, acceptance 2, engine 18, ai 16, writes 6, recording 64, recorder 5, onDevice 41, transcription 48, freeTier 7.
+- **Server:** 15 tests.
 - **Browser E2E:** 21 checks, built extension in Chromium 141 (headless):
   1. organizes unstructured notes automatically
   2. labels AI clarifications and expansions distinctly
@@ -59,6 +59,15 @@ A separate review pass ran 3,000 randomized patch sequences against a deep-froze
 7. A title-only rename of the Google Doc didn't refresh the panel.
 
 The review also flagged a design gap, which is now fixed as well: a paragraph deleted and restored (undo) between polls now keeps its identity, so no AI work is repeated.
+
+## Next version: free options
+
+- **On this computer**: AI mode `device` runs every AI call on Chrome's built-in model through the Prompt API (`LanguageModel`, `extension/src/ai/onDevice.ts`): no key, no cost, nothing sent. One instruction-only base session per system prompt, cloned for each request so notes never share a session; the patch schema is the response constraint (any JSON object if Chrome can't compile it); context overflow, readiness and cancellation map to typed errors. Settings and Setup show requirements, readiness and a one-time download with progress.
+- **Free cloud presets** (limits checked 2026-10-22): Groq, Google Gemini, Mistral, OpenRouter (`:free` models) and Ollama, each with a note on its limits, what happens to the notes and whether its terms require users to be 18+. Connecting to a rate-limited one slows Update frequency to *Saver*.
+- **A separate transcription service** (Settings → Recording): OpenAI, Groq's free `whisper-large-v3-turbo`, a local Speaches server (`Systran/faster-whisper-small`), Mistral `voxtral-mini-latest`, or a custom address and key. Consent, the consent text and Chrome host permission follow the transcription address; with the on-device model and no service, Record says where to choose one.
+- Written in parallel by Hermes Agent (on-device model; transcription service) and Claude Code (presets, notes, pacing, docs). Hermes's model hit its usage limit before the last checks, so Claude Code finished both: corrected the Mistral model id from Mistral's docs, added the schema fallback, merged and checked everything.
+- Independent review (a separate Claude agent, given only the code): consent, host permission, the recording start/cancel state and on-device session lifetimes held up. Fixed from it: recording "same as the AI connection" now follows the notes to the new service's own transcription model (Groq's Whisper rather than an OpenAI model name Groq would reject); an API key is dropped when its address moves to another host, for notes and recording alike, so it is never sent to a different provider; the free-tier note and Saver apply only when a preset's models are in use, not to a paid account at the same address; the Record message names the actual cause; the overflow listener also hears Chrome's older `quotaoverflow` event.
+- Not verified here: Chrome's real built-in model (download, speed, output quality and its context window with long notes), real free-tier limits, and a real Speaches or Groq transcription. These need a supported Chrome on capable hardware and the providers' accounts.
 
 ## Version 0.4.0: lecture recording, lower AI costs, a summary in the notes' outline
 
