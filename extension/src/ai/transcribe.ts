@@ -2,9 +2,9 @@ import type { AISettings, RecordingSettings } from '../core/settings';
 import { AIError, endpointFor } from './client';
 
 /**
- * Speech-to-text through the user's OpenAI-compatible endpoint (or the NotePilot proxy): POST /audio/transcriptions
- * beside the /chat/completions the rest of NotePilot uses. One request per recorded segment; the audio is sent once
- * and never stored. `prompt` carries the end of the previous line, so words split between segments stay consistent.
+ * Speech-to-text through the recording service, or the AI endpoint / NotePilot proxy: POST /audio/transcriptions.
+ * One request per recorded segment; the audio is sent once and never stored. `prompt` carries the end of the previous
+ * line, so words split between segments stay consistent.
  */
 
 export interface TranscribeOptions {
@@ -14,7 +14,25 @@ export interface TranscribeOptions {
 
 const EXT: Record<string, string> = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'mp4', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' };
 
-export function transcriptionUrl(ai: AISettings): { url: string; key: string } {
+export function transcriptionUrl(ai: AISettings, rec?: RecordingSettings): { url: string; key: string } {
+  if (rec?.endpoint === 'custom') {
+    const base = rec.baseUrl.trim().replace(/\/+$/, '');
+    let origin = '';
+    try {
+      const parsed = new URL(base);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') origin = parsed.origin;
+    } catch {
+      /* invalid address: explain where to fix it below */
+    }
+    if (!origin) throw new AIError('bad_request', 'Enter an HTTP or HTTPS transcription service address in Settings → Recording.');
+    const local = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    // Chrome's optional HTTP permissions cover only these loopback hosts.
+    if (origin.startsWith('http:') && !local) throw new AIError('bad_request', 'Use HTTPS for a remote transcription service, or HTTP on localhost / 127.0.0.1, in Settings → Recording.');
+    const key = rec.apiKey.trim();
+    if (!local && !key) throw new AIError('auth', 'Add an API key for the transcription service in Settings → Recording.');
+    return { url: `${base}/audio/transcriptions`, key };
+  }
+  if (ai.mode === 'device') throw new AIError('bad_request', 'The on-device AI cannot transcribe audio. Choose a transcription service in Settings → Recording.');
   const { url, key } = endpointFor(ai);
   return { url: url.replace(/\/chat\/completions$/, '/audio/transcriptions'), key };
 }
@@ -26,13 +44,15 @@ export async function transcribe(
   opts: TranscribeOptions = {},
   fetchImpl: typeof fetch = (...a) => fetch(...a),
 ): Promise<{ text: string; latencyMs: number }> {
-  const { url, key } = transcriptionUrl(ai);
+  const { url, key } = transcriptionUrl(ai, rec);
+  // Mistral returns JSON by default and uses context_bias, not OpenAI's prompt field.
+  const mistral = /^https:\/\/api\.mistral\.ai(?::443)?\//.test(url);
   const form = new FormData();
   form.append('file', audio, `segment.${EXT[audio.type.split(';')[0]] ?? 'webm'}`);
   form.append('model', rec.model);
-  form.append('response_format', 'json');
+  if (!mistral) form.append('response_format', 'json');
   if (rec.language.trim()) form.append('language', rec.language.trim());
-  if (opts.prompt?.trim()) form.append('prompt', opts.prompt.trim().slice(-600));
+  if (!mistral && opts.prompt?.trim()) form.append('prompt', opts.prompt.trim().slice(-600));
   const headers: Record<string, string> = {};
   if (key) headers.Authorization = `Bearer ${key}`; // no Content-Type: the browser sets the multipart boundary
   const t0 = performance.now();

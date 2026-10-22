@@ -1,6 +1,6 @@
 import { createPipelines } from '../ai/pipelines';
 import { UsageTracker } from '../ai/usage';
-import { endpointOrigin, isAIConfigured, type Settings } from '../core/settings';
+import { endpointOrigin, isAIConfigured, transcriptionOrigin, type Settings } from '../core/settings';
 import type { ProcessGate } from '../engine/syncEngine';
 import { auth } from '../google/auth';
 import { createDocsClient } from '../google/docsApi';
@@ -55,6 +55,18 @@ export async function requestEndpointPermission(s: Settings): Promise<boolean> {
   }
   try {
     return await chrome.permissions.request({ origins: [pattern] });
+  } catch {
+    return false;
+  }
+}
+
+/** The transcription service may be different from the note AI. Call from the recording click, before any await. */
+export async function requestTranscriptionPermission(s: Settings): Promise<boolean> {
+  try {
+    const u = new URL(transcriptionOrigin(s));
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    if (u.protocol === 'http:' && u.hostname !== 'localhost' && u.hostname !== '127.0.0.1') return false;
+    return await chrome.permissions.request({ origins: [`${u.protocol}//${u.hostname}/*`] });
   } catch {
     return false;
   }

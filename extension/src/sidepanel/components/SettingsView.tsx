@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { endpointOrigin, type Settings } from '../../core/settings';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { endpointOrigin, transcriptionOrigin, type Settings } from '../../core/settings';
+import { TRANSCRIPTION_PRESETS, applyTranscriptionPreset, sameTranscriptionDefaults, transcriptionPresetFor } from '../../core/transcriptionPresets';
 import { toMarkdown } from '../../core/export';
 import type { DailyUsage } from '../../ai/usage';
 import { percentile, type EngineView } from '../../engine/state';
@@ -49,10 +50,14 @@ export function SettingsView({
 }) {
   const [today, setToday] = useState<DailyUsage>(usage.get());
   const [copied, setCopied] = useState(false);
+  const [customTranscription, setCustomTranscription] = useState(false);
+  const sameTranscription = useRef<{ origin: string; values: Pick<Settings['recording'], 'model' | 'pricePerMinute'> } | null>(null);
   useEffect(() => usage.subscribe(setToday), []);
 
   const s = settings;
   const origin = endpointOrigin(s.ai);
+  const recordingOrigin = transcriptionOrigin(s);
+  const transcriptionPreset = transcriptionPresetFor(s.recording);
   const excluded = !!docId && s.privacy.excludedDocs.includes(docId);
   const approved = !!docId && s.privacy.approvedDocs.includes(docId);
   const m = view?.metrics;
@@ -175,8 +180,50 @@ export function SettingsView({
         <AIConnectionForm settings={s} update={update} />
       </Card>
 
-      <Card title="Recording" description="Lecture audio is transcribed through your AI connection. The transcript goes into a section at the end of your Google Doc, and its key points into your notes.">
-        <Field label="Transcription model" hint="OpenAI: gpt-4o-mini-transcribe (cheapest), gpt-4o-transcribe or whisper-1. Other providers need an /audio/transcriptions endpoint." htmlFor="np-rec-model">
+      <Card title="Recording" description="Lecture audio can use a different service from your notes. The transcript goes into a section at the end of your Google Doc, and its key points into your notes.">
+        <Field label="Transcription" htmlFor="np-rec-service">
+          <select
+            id="np-rec-service"
+            className={inputCls}
+            value={s.recording.endpoint === 'same' ? 'same' : customTranscription ? 'custom' : transcriptionPreset?.label ?? 'custom'}
+            onChange={(e) => {
+              const value = e.target.value;
+              setCustomTranscription(value === 'custom');
+              const preset = TRANSCRIPTION_PRESETS.find((p) => p.label === value);
+              update((x) => {
+                if (x.recording.endpoint === 'same') sameTranscription.current = { origin: endpointOrigin(x.ai), values: { model: x.recording.model, pricePerMinute: x.recording.pricePerMinute } };
+                const previous = sameTranscription.current;
+                const same = previous?.origin === endpointOrigin(x.ai) ? previous.values : sameTranscriptionDefaults(x.ai);
+                return { ...x, recording: { ...x.recording, ...(preset ? applyTranscriptionPreset(preset) : value === 'same' ? { endpoint: 'same', ...same } : { endpoint: 'custom' }) } };
+              });
+            }}
+          >
+            <option value="same">Same as AI connection</option>
+            {TRANSCRIPTION_PRESETS.map((p) => <option key={p.label}>{p.label}</option>)}
+            <option value="custom">Custom (OpenAI-compatible)</option>
+          </select>
+        </Field>
+        {s.recording.endpoint === 'custom' && (
+          <>
+            <Field label="Transcription address" hint="An OpenAI-compatible base URL, including /v1. Use HTTPS, or HTTP on localhost / 127.0.0.1. Audio goes here, not to the notes connection." htmlFor="np-rec-base">
+              <input id="np-rec-base" className={inputCls} value={s.recording.baseUrl} spellCheck={false} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, baseUrl: e.target.value.trim() } }))} placeholder="http://localhost:8000/v1" />
+            </Field>
+            <Field label="Transcription API key" hint={transcriptionPreset?.needsKey === false ? 'Optional for the local server. Enter a key only if you configured one there.' : 'Your key for this transcription service. Stored only in this browser profile, never borrowed from the notes connection.'} htmlFor="np-rec-key">
+              <input id="np-rec-key" type="password" autoComplete="off" className={inputCls} value={s.recording.apiKey} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, apiKey: e.target.value.trim() } }))} />
+            </Field>
+          </>
+        )}
+        {s.recording.endpoint === 'same' && s.ai.mode === 'device' && (
+          <p role="status" className="text-[11.5px] text-amber-700 dark:text-amber-300">The on-device AI cannot transcribe audio. Choose a transcription service above to record.</p>
+        )}
+        {transcriptionPreset?.free && (
+          <div className="space-y-1 rounded-md bg-ink-50 px-3 py-2 text-[11.5px] text-ink-500 dark:bg-ink-900 dark:text-ink-400">
+            <p>{transcriptionPreset.free.limits}</p>
+            <p>{transcriptionPreset.free.data}</p>
+            {transcriptionPreset.free.adultsOnly && <p>Adults only (18+): this service requires an adult account.</p>}
+          </div>
+        )}
+        <Field label="Transcription model" hint="The service must offer /audio/transcriptions. Presets set the model and estimated price; adjust these to match your provider." htmlFor="np-rec-model">
           <input id="np-rec-model" className={inputCls} value={s.recording.model} spellCheck={false} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, model: e.target.value.trim() } }))} />
         </Field>
         <div className="grid grid-cols-3 gap-3">
@@ -191,7 +238,7 @@ export function SettingsView({
           </Field>
         </div>
         {s.recordingConsent && (
-          <Row label="Recording allowed" hint={`Audio may be sent to ${s.recordingConsent.endpointOrigin} for transcription.`}>
+          <Row label={recordingOrigin && s.recordingConsent.endpointOrigin === recordingOrigin ? 'Recording allowed' : 'Recording permission needs renewal'} hint={`Audio was allowed for ${s.recordingConsent.endpointOrigin}.${s.recordingConsent.endpointOrigin !== recordingOrigin ? ' Record again to allow the current transcription service.' : ''}`}>
             <Button size="sm" variant="ghost" onClick={() => update((x) => ({ ...x, recordingConsent: null }))}>
               Withdraw
             </Button>
