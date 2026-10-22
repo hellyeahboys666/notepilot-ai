@@ -60,7 +60,12 @@ A separate review pass ran 3,000 randomized patch sequences against a deep-froze
 
 The review also flagged a design gap, which is now fixed as well: a paragraph deleted and restored (undo) between polls now keeps its identity, so no AI work is repeated.
 
-## Lecture recording (unreleased)
+## Version 0.4.0: lecture recording, lower AI costs, a summary in the notes' outline
+
+- The summary follows the organized notes' outline (same numbered sections) in a redesigned card, and the panel never treats NotePilot's own companion Google Doc as notes. Default models are GPT-5.4.
+- Lower AI costs: smaller requests for routine edits (relevant sections plus previews, with a periodic full pass), pacing by the Frequency setting (Balanced: at most 12 s while typing, insights after 15 s of quiet), targeted repairs, and priced low-cost presets (`gpt-6-luna`, Claude Haiku 5.5). Fixed: new units without "after" were placed first rather than last.
+- Lecture recording, as follows.
+
 
 - **Record** in the Notes toolbar: microphone, or a tab chosen in Chrome's share dialog. Audio is cut into ~20 s segments (each a complete recording), silent ones are skipped, and each is transcribed through the AI endpoint (`/audio/transcriptions`, default `gpt-4o-mini-transcribe`).
 - Each line is appended as "[10:42] …" to a *Lecture transcript (NotePilot)* section at the end of the Google Doc: a named range, created with the first line. Requests are planned purely (`core/transcript.ts`), checked to insert only at the end of that section and to style or name only the inserted text, and sent with `writeControl.targetRevisionId`.
