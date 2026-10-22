@@ -1,5 +1,6 @@
 import type { AISettings, JsonMode } from '../core/settings';
 import type { ChatMessage } from '../core/context';
+import { chat as onDeviceChat } from './onDevice';
 
 /**
  * Minimal client for OpenAI-compatible `POST /chat/completions` endpoints (OpenAI, Anthropic's
@@ -59,6 +60,7 @@ export function endpointFor(s: AISettings): { url: string; key: string } {
 }
 
 export async function chatCompletion(settings: AISettings, req: AIRequest, fetchImpl: typeof fetch = (...a) => fetch(...a)): Promise<AIResult> {
+  if (settings.mode === 'device') return onDeviceChat(req);
   const { url, key } = endpointFor(settings);
   const qk = `${url}|${req.model}`;
   for (let attempt = 0; attempt < 4; attempt++) {

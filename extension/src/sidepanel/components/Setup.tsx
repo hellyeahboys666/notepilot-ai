@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { availability } from '../../ai/onDevice';
 import { endpointOrigin, isAIConfigured, type Settings } from '../../core/settings';
 import type { EngineView } from '../../engine/state';
 import { auth } from '../../google/auth';
@@ -8,10 +9,35 @@ import { Button, Icon, cx } from './ui';
 /** First-run flow: Google (read-only) → AI connection → consent. After this, everything is automatic. */
 export function Setup({ view, settings, update, onSignedIn }: { view: EngineView | null; settings: Settings; update: (fn: (s: Settings) => Settings) => void; onSignedIn: () => void }) {
   const [authError, setAuthError] = useState<string | null>(null);
+  const [deviceReady, setDeviceReady] = useState(false);
   const googleDone = !!view && view.status !== 'needs_auth' && view.status !== 'starting';
-  const aiDone = isAIConfigured(settings.ai);
+  const onDevice = settings.ai.mode === 'device';
+  const aiDone = isAIConfigured(settings.ai) && (!onDevice || deviceReady);
   const origin = endpointOrigin(settings.ai);
-  const consentDone = !!settings.consent && settings.consent.endpointOrigin === origin;
+  const consentDone = aiDone && !!origin && settings.consent?.endpointOrigin === origin;
+
+  useEffect(() => {
+    setDeviceReady(false);
+    if (!onDevice) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = async () => {
+      try {
+        const status = await availability();
+        if (active) setDeviceReady(status === 'available');
+      } catch {
+        if (active) setDeviceReady(false);
+      } finally {
+        if (active) timer = setTimeout(() => void check(), 3000);
+      }
+    };
+    // Saved local settings are not proof that Chrome still has the model installed.
+    void check();
+    return () => {
+      active = false;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [onDevice]);
 
   const signIn = async () => {
     setAuthError(null);
@@ -22,6 +48,12 @@ export function Setup({ view, settings, update, onSignedIn }: { view: EngineView
       setAuthError(e instanceof Error ? e.message : String(e));
     }
   };
+
+  const allowProcessing = () => update((s) => {
+    // Consent belongs to the connection shown here, not a newly switched provider.
+    if (!aiDone || !origin || !isAIConfigured(s.ai) || endpointOrigin(s.ai) !== origin) return s;
+    return { ...s, consent: { endpointOrigin: origin, at: Date.now() } };
+  });
 
   return (
     <div className="px-4 py-5">
@@ -38,13 +70,24 @@ export function Setup({ view, settings, update, onSignedIn }: { view: EngineView
         <Step n={2} title="Connect an AI model" done={aiDone} active={googleDone && !aiDone}>
           <AIConnectionForm settings={settings} update={update} compact />
         </Step>
-        <Step n={3} title="Allow sending notes for rewriting" done={consentDone} active={googleDone && aiDone && !consentDone}>
+        <Step n={3} title={onDevice ? 'Allow local note processing' : 'Allow sending notes for rewriting'} done={consentDone} active={googleDone && aiDone && !consentDone}>
           <p className="text-[12px] leading-relaxed text-ink-600 dark:text-ink-300">
-            The text of the Google Docs you open with this panel will be sent to <span className="font-semibold">{origin || 'your AI provider'}</span> to be rewritten and analyzed. Your
-            documents are never modified.{' '}
-            {settings.privacy.redactPII ? 'Email addresses, phone and ID numbers are redacted before sending.' : ''} You can revoke this at any time in Settings.
+            {onDevice ? (
+              <>
+                The text of the Google Docs you open with this panel will be rewritten and analyzed on this computer using Chrome’s built-in AI. Note text is not sent to AI providers.{' '}
+                Your documents are never modified.{' '}
+                {settings.privacy.redactPII ? 'Email addresses, phone and ID numbers are redacted before local processing. ' : ''}
+              </>
+            ) : (
+              <>
+                The text of the Google Docs you open with this panel will be sent to <span className="font-semibold">{origin || 'your AI provider'}</span> to be rewritten and analyzed. Your
+                documents are never modified.{' '}
+                {settings.privacy.redactPII ? 'Email addresses, phone and ID numbers are redacted before sending. ' : ''}
+              </>
+            )}
+            You can revoke this at any time in Settings.
           </p>
-          <Button variant="primary" className="mt-2" onClick={() => update((s) => ({ ...s, consent: { endpointOrigin: origin, at: Date.now() } }))}>
+          <Button variant="primary" className="mt-2" onClick={allowProcessing}>
             Allow and start organizing
           </Button>
         </Step>

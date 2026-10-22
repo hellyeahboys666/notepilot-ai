@@ -40,7 +40,7 @@ export class UsageTracker {
     this.usage.completionTokens += completionTokens;
     const inPrice = model === 'deep' ? (ai.deepInputPricePerM ?? ai.inputPricePerM) : ai.inputPricePerM;
     const outPrice = model === 'deep' ? (ai.deepOutputPricePerM ?? ai.outputPricePerM) : ai.outputPricePerM;
-    this.usage.costUSD += (promptTokens * inPrice + completionTokens * outPrice) / 1_000_000;
+    if (ai.mode !== 'device') this.usage.costUSD += (promptTokens * inPrice + completionTokens * outPrice) / 1_000_000;
     void this.persistence?.save(this.usage);
     this.listeners.forEach((l) => l(this.get()));
   }
