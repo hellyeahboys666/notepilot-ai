@@ -9,6 +9,10 @@ import type { ServerConfig } from './config.js';
  * Keeps the provider API key on the server, authenticates users with per-user tokens, enforces
  * rate limits and daily token budgets, caches identical requests, and records usage counts.
  * It never logs or stores prompt/response content.
+ *
+ * POST /v1/audio/transcriptions passes the extension's multipart upload (lecture audio) through to the
+ * upstream unchanged, under the same auth, rate limit, daily budget and model allowlist. Audio and
+ * transcripts are never cached, logged or stored: only byte counts, duration and token counts.
  */
 
 interface Usage {
@@ -68,6 +72,27 @@ class TokenBucket {
 
 const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
+/** The `model` value and whether a `file` part exists, read from a multipart/form-data body without copying the audio. */
+export function multipartFields(body: Buffer, boundary: string): { model: string | null; hasFile: boolean } {
+  const delimiter = Buffer.from(`--${boundary}`);
+  let model: string | null = null;
+  let hasFile = false;
+  let at = body.indexOf(delimiter);
+  while (at !== -1) {
+    const start = at + delimiter.length;
+    if (body.subarray(start, start + 2).toString('latin1') === '--') break;
+    const next = body.indexOf(delimiter, start);
+    const headEnd = body.indexOf('\r\n\r\n', start);
+    if (headEnd === -1 || (next !== -1 && headEnd > next)) break;
+    const head = body.subarray(start, headEnd).toString('latin1');
+    const name = /content-disposition:[^\r\n]*\bname="([^"]*)"/i.exec(head)?.[1];
+    if (name === 'file') hasFile = true;
+    else if (name === 'model' && next !== -1) model = body.subarray(headEnd + 4, next - 2).toString('utf8').trim() || null;
+    at = next;
+  }
+  return { model, hasFile };
+}
+
 export function createApp(config: ServerConfig, deps: AppDeps = { fetch: globalThis.fetch, now: Date.now }) {
   const usage = new Map<string, Usage>();
   const cache = new LruCache(500, config.cacheTtlMs, deps.now);
@@ -102,26 +127,106 @@ export function createApp(config: ServerConfig, deps: AppDeps = { fetch: globalT
   };
   const error = (res: ServerResponse, status: number, message: string, headers?: Record<string, string>) => send(res, status, { error: { message } }, headers);
 
-  const readBody = (req: IncomingMessage): Promise<string> =>
+  // Past the cap it stops keeping chunks but lets the rest drain, so the 413 can still reach the client
+  // (destroying the socket here would lose the response); the 413 closes the connection.
+  const readRaw = (req: IncomingMessage, max: number): Promise<Buffer> =>
     new Promise((resolve, reject) => {
       let size = 0;
+      let over = false;
       const chunks: Buffer[] = [];
       req.on('data', (c: Buffer) => {
+        if (over) return;
         size += c.length;
-        if (size > config.maxBodyBytes) {
+        if (size > max) {
+          over = true;
+          chunks.length = 0;
           reject(new Error('too_large'));
-          req.destroy();
           return;
         }
         chunks.push(c);
       });
-      req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      req.on('end', () => {
+        if (!over) resolve(Buffer.concat(chunks));
+      });
       req.on('error', reject);
     });
+  const readBody = (req: IncomingMessage) => readRaw(req, config.maxBodyBytes).then((b) => b.toString('utf8'));
+  const tooLarge = (res: ServerResponse) => error(res, 413, 'Request too large', { Connection: 'close' });
 
   const logUsage = (entry: Record<string, unknown>) => {
     if (!config.usageLog) return;
     void appendFile(config.usageLog, JSON.stringify({ at: new Date(deps.now()).toISOString(), ...entry }) + '\n').catch(() => undefined);
+  };
+
+  // Audio transcription: the upload is forwarded byte for byte with its own multipart Content-Type. Only the
+  // `model` field is read (for the allowlist) and the presence of a `file` part; the audio itself is not parsed.
+  const transcribe = async (req: IncomingMessage, res: ServerResponse, user: string) => {
+    const type = req.headers['content-type'] ?? '';
+    const boundary = /^multipart\/form-data\s*;.*boundary=(?:"([^"]+)"|([^\s;]+))/i.exec(type);
+    if (!boundary) return error(res, 415, 'Body must be multipart/form-data');
+    const declared = Number(req.headers['content-length']);
+    if (Number.isFinite(declared) && declared > config.maxAudioBytes) return tooLarge(res);
+    let body: Buffer;
+    try {
+      body = await readRaw(req, config.maxAudioBytes);
+    } catch {
+      return tooLarge(res);
+    }
+    const form = multipartFields(body, boundary[1] ?? boundary[2]);
+    if (!form.hasFile) return error(res, 400, 'A file part is required');
+    const model = form.model;
+    if (!model) return error(res, 400, 'model is required');
+    if (config.allowedModels.size && !config.allowedModels.has(model)) return error(res, 400, `Model "${model}" is not allowed on this server`);
+
+    const u = usageFor(user);
+    if (u.promptTokens + u.completionTokens >= config.dailyTokenLimit) return error(res, 402, 'Daily token budget exhausted for this user', { 'Retry-After': '3600' });
+    const rl = limiter.take(user);
+    if (!rl.ok) return error(res, 429, 'Rate limit exceeded', { 'Retry-After': String(rl.retryAfterSec) });
+
+    const ctl = new AbortController();
+    const timeout = setTimeout(() => ctl.abort(), config.upstreamTimeoutMs);
+    res.on('close', () => {
+      if (!res.writableEnded) ctl.abort();
+    });
+    const t0 = deps.now();
+    let upstream: Response;
+    try {
+      upstream = await deps.fetch(`${config.upstreamBaseUrl}/audio/transcriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': type, Authorization: `Bearer ${config.upstreamApiKey}` },
+        body,
+        signal: ctl.signal,
+      });
+    } catch {
+      clearTimeout(timeout);
+      if (ctl.signal.aborted && res.destroyed) return;
+      return error(res, 502, 'Upstream AI provider unreachable');
+    }
+    const text = await upstream.text().catch(() => '');
+    clearTimeout(timeout);
+    u.requests++;
+    // gpt-4o(-mini)-transcribe report tokens; whisper-1 reports seconds. A text/srt/vtt response has no usage.
+    let prompt = 0;
+    let completion = 0;
+    let seconds: number | undefined;
+    if (upstream.ok) {
+      try {
+        const j = JSON.parse(text) as { duration?: number; usage?: { type?: string; input_tokens?: number; output_tokens?: number; seconds?: number } };
+        prompt = j.usage?.input_tokens ?? 0;
+        completion = j.usage?.output_tokens ?? 0;
+        seconds = j.usage?.seconds ?? j.duration;
+      } catch {
+        /* text response_format */
+      }
+      u.promptTokens += prompt;
+      u.completionTokens += completion;
+    }
+    logUsage({ user, route: 'transcriptions', model, status: upstream.status, bytes: body.length, ...(Number.isFinite(seconds) ? { seconds } : {}), prompt, completion, ms: deps.now() - t0 });
+    // response_format=text comes back as text/plain, so the upstream's own Content-Type is kept.
+    const headers: Record<string, string> = { 'Content-Type': (text && upstream.headers.get('content-type')) || 'application/json' };
+    const ra = upstream.headers.get('retry-after');
+    if (ra) headers['Retry-After'] = ra;
+    return send(res, upstream.status, text || JSON.stringify({ error: { message: `Upstream error ${upstream.status}` } }), headers);
   };
 
   const handler: RequestListener = async (req, res) => {
@@ -149,13 +254,14 @@ export function createApp(config: ServerConfig, deps: AppDeps = { fetch: globalT
         return send(res, 200, { user, ...u, dailyTokenLimit: config.dailyTokenLimit });
       }
 
+      if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') return await transcribe(req, res, user);
       if (req.method !== 'POST' || url.pathname !== '/v1/chat/completions') return error(res, 404, 'Not found');
 
       let raw: string;
       try {
         raw = await readBody(req);
       } catch {
-        return error(res, 413, 'Request too large');
+        return tooLarge(res);
       }
       let body: Record<string, unknown>;
       try {
