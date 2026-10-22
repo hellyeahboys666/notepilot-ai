@@ -4,6 +4,7 @@ import { endpointOrigin, isAIConfigured, type Settings } from '../core/settings'
 import type { ProcessGate } from '../engine/syncEngine';
 import { auth } from '../google/auth';
 import { createDocsClient } from '../google/docsApi';
+import { createTranscriptWriter } from '../google/transcriptWriter';
 import { indexedDbStore, memoryStore, responseCache, type DocStore } from '../storage/db';
 import { usagePersistence } from '../storage/settingsStore';
 
@@ -21,6 +22,7 @@ export const usage = new UsageTracker(usagePersistence);
 void usage.init();
 
 export const docsClient = createDocsClient(auth);
+export const transcriptWriter = createTranscriptWriter(auth);
 export const pipelines = createPipelines(getSettings, usage, responseCache);
 
 const volatileStore = memoryStore();

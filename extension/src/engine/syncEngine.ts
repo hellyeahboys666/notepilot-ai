@@ -56,6 +56,8 @@ export const TIMING = {
   maxBackoff: 120_000,
   /** Max characters of new/changed note text sent in one rewrite call (long docs are batched). */
   batchChars: 8000,
+  /** While recording, transcript-only changes wait this long, so a minute of speech is organized in one call. */
+  transcriptWait: 60_000,
 };
 
 const GATE_STATUS: Record<Exclude<ProcessGate, { ok: true }>['reason'], [EngineStatus, string]> = {
@@ -377,6 +379,10 @@ export class SyncEngine {
     const typingPaused = this.lastActivityAt ? now - this.lastActivityAt >= TIMING.typingPause : !this.lastPollChanged;
     const overdue = now - this.firstPendingAt >= TIMING.maxWait;
     if (!(this.catchUp || (quiet && typingPaused) || overdue)) return;
+    // Transcript lines arrive every ~20 s while recording: organize them about once a minute rather than per line.
+    // Anything the user typed goes through at once (and takes the waiting lines with it).
+    const onlyTranscript = [...diff.added, ...diff.removed, ...diff.modified.map((m) => m.after)].every((b) => b.transcript);
+    if (onlyTranscript && !this.catchUp && now - this.firstPendingAt < TIMING.transcriptWait) return;
 
     this.catchUp = false;
     // Rewrites keep the organized notes current and take priority over optional insights.
@@ -405,7 +411,9 @@ export class SyncEngine {
 
     const newProcessed = advanceProcessed(this.st.processed, current.blocks, batch);
     const validSourceIds = new Set(newProcessed.map((b) => b.id));
-    const requiredSourceIds = newProcessed.filter((b) => b.kind !== 'heading' && isSubstantive(b.text)).map((b) => b.id);
+    // Transcript lines are folded in where they add something; unlike typed notes, each one need not appear.
+    const requiredSourceIds = newProcessed.filter((b) => b.kind !== 'heading' && !b.transcript && isSubstantive(b.text)).map((b) => b.id);
+    const optionalSourceIds = new Set(newProcessed.filter((b) => b.transcript).map((b) => b.id));
 
     try {
       const built = buildRewriteMessages({ organized: this.st.organized, currentBlocks: current.blocks, batch, settings, reorganizeOnly });
@@ -413,7 +421,7 @@ export class SyncEngine {
       if (!res.cached) pushMetric(this.st.metrics.aiLatency, res.latencyMs);
       if (this.isStale(job)) return;
 
-      const ctx = { validSourceIds, requiredSourceIds, now: Date.now(), sourceVersion: current.version, allowExpansion: settings.aiExpansion };
+      const ctx = { validSourceIds, requiredSourceIds, optionalSourceIds, now: Date.now(), sourceVersion: current.version, allowExpansion: settings.aiExpansion };
       let result = applyPatch(this.st.organized, res.ops, ctx, res.title);
       let doc = result.doc;
 

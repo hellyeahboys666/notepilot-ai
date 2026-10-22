@@ -11,7 +11,8 @@ What was verified while building NotePilot AI, how, and what could not be verifi
 | Docs API → organized notes pipeline | ✅ Verified (simulated backend) | Real built extension in real Chromium; `docs.googleapis.com` requests routed to a mutable fake document with the documented REST response shape |
 | Spec §15 acceptance workflow, steps 1–11 | ✅ Verified (scripted model) | Engine-level simulation (`tests/acceptance.test.ts`) and the browser E2E run (`e2e/run-e2e.mjs`, 21/21 checks) |
 | Summary + companion Google Doc | ✅ Verified (simulated Drive) | Built extension in Chromium: *Summarize* shows the summary in the notes' outline (same numbers, titles and order as the notes), its section headings navigate, the Drive upload request is a `POST` that creates a Google Doc (summary, notes, insights), a second click `PATCH`es the same doc, and the notes doc is never a target. Opening the companion doc in a tab keeps the panel on the notes it came from (recognized by its saved id, or by its "— NotePilot notes" name), so it is never rewritten or summarized itself. A new doc is made only when the old one was deleted, trashed or can no longer be changed by NotePilot; any other Drive error is reported instead. Unit tests cover deleted/trashed docs, a disabled Drive API, refused permission and token refresh |
-| Original doc never modified | ✅ Verified | Every Docs request in the E2E run was `GET`; Drive requests only ever targeted the companion doc. Static tests forbid Docs write endpoints, any Docs write scope, any Drive scope other than `drive.file` and any Drive endpoint other than upload |
+| What the student wrote is never modified | ✅ Verified | Every Docs request in the E2E run was `GET`; Drive requests only ever targeted the companion doc. Static tests allow exactly one writer (the lecture transcript), forbid any other Docs write, any Drive scope other than `drive.file` and any Drive endpoint other than upload |
+| Lecture recording: transcript section and organizing | ✅ Verified (simulated) | `tests/recording.test.ts` (20 tests) and `tests/recorder.test.ts` (5): append plans checked against a model of a Docs body, the writer's requests, transcription requests, the recording session, and the real `SyncEngine` with transcript blocks. Not run against real Google Docs, a real microphone or a real transcription model (see below) |
 | Robustness (staleness, cancellation, back-off, offline, invalid output, budget, consent, persistence, long docs) | ✅ Verified | `tests/engine.test.ts` (17 tests, fake timers) |
 | Proxy server | ✅ Verified | `server/tests/app.test.ts` (7 tests over real HTTP) |
 | Sign-in against a real Google account and a real Google Doc | ⚠️ Not verified | Requires your own OAuth client bound to your extension ID (see below) |
@@ -20,7 +21,7 @@ What was verified while building NotePilot AI, how, and what could not be verifi
 
 ## Test inventory (all passing)
 
-- **Extension:** 100 tests in 10 files: docParser 5, identity 7, patch 18, context 6, completion 12, summaryExport 19, acceptance 2, engine 17, ai 9, readonly 5.
+- **Extension:** 126 tests in 12 files: docParser 5, identity 7, patch 18, context 6, completion 12, summaryExport 19, acceptance 2, engine 17, ai 9, writes 6, recording 20, recorder 5.
 - **Server:** 7 tests.
 - **Browser E2E:** 21 checks, built extension in Chromium 141 (headless):
   1. organizes unstructured notes automatically
@@ -58,6 +59,16 @@ A separate review pass ran 3,000 randomized patch sequences against a deep-froze
 7. A title-only rename of the Google Doc didn't refresh the panel.
 
 The review also flagged a design gap, which is now fixed as well: a paragraph deleted and restored (undo) between polls now keeps its identity, so no AI work is repeated.
+
+## Lecture recording (unreleased)
+
+- **Record** in the Notes toolbar: microphone, or a tab chosen in Chrome's share dialog. Audio is cut into ~20 s segments (each a complete recording), silent ones are skipped, and each is transcribed through the AI endpoint (`/audio/transcriptions`, default `gpt-4o-mini-transcribe`).
+- Each line is appended as "[10:42] …" to a *Lecture transcript (NotePilot)* section at the end of the Google Doc: a named range, created with the first line. Requests are planned purely (`core/transcript.ts`), checked to insert only at the end of that section and to style or name only the inserted text, and sent with `writeControl.targetRevisionId`.
+- The parser marks lines inside the named range as transcript and skips NotePilot's heading. The rewrite gets them with `"recording": true` and rules for folding them in (merge with the student's notes, drop filler, fix misheard terms). They are not required to be cited, so filler is neither forced into the notes nor shown as unorganized, and transcript-only changes are organized about once a minute.
+- First use: a consent note in the panel, then Google's consent for the full Docs scope (requested only then).
+- Review fixes (Hermes and Codex): only "[time] …" lines and NotePilot's heading count as transcript, so text the student types at the end of the section stays a required note and new lines go before it; inserted text and paragraphs get plain formatting; a line already present is not written again; the writer stops if its last line ends up outside the section; the recorder delivers every segment before stop() resolves and keeps the tail when a track ends; after the session stops itself nothing more is sent; a spent budget (402) or three lost parts in a row stop the recording.
+- Transcription models: OpenAI marks `whisper-1`, `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` deprecated (shutdown 26 Feb 2027). The model is a setting; switch the default before then.
+- Not verified here: the microphone prompt in a real side panel, tab audio through the share dialog, real transcription quality, and the real Docs behaviour of named ranges and `targetRevisionId` under concurrent typing. These need a real Chrome profile, a Google account with the `documents` scope added to the OAuth consent screen, and an OpenAI-compatible key with transcription.
 
 ## Version 0.3.0: structure, summary and Google Doc
 

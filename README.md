@@ -1,6 +1,6 @@
 # NotePilot AI
 
-A Chrome extension that reads the Google Doc you're typing in and keeps a live, rewritten, organized version of it in the Chrome side panel, with AI insights alongside. One click gives you a concise summary and saves everything to a separate Google Doc. **It never modifies your notes.**
+A Chrome extension that reads the Google Doc you're typing in and keeps a live, rewritten, organized version of it in the Chrome side panel, with AI insights alongside. One click gives you a concise summary and saves everything to a separate Google Doc. It can also record a lecture while you type and work what's said into your notes. **It never changes what you wrote:** the only thing it ever adds to your doc is the transcript of a recording you start, in its own section at the end.
 
 <p>
 <img src="docs/screenshots/02-new-section-inserted.png" width="270" alt="Organized notes with a new section inserted in place">
@@ -14,6 +14,7 @@ A Chrome extension that reads the Google Doc you're typing in and keeps a live, 
 - **Finishes what you didn't.** Sentences you cut off mid-way are completed, and ideas you started but didn't write out are developed (Settings → Writing → *Finish incomplete notes*: Off / Finish / Develop). The words the AI added are highlighted, so you always know which part you wrote. The rewrite favours short sentences, plain words, a logical order and lists, tables or steps where they make an idea easier to follow.
 - **Structured, not just reworded.** Comparisons become tables, processes become numbered steps, parallel points become (nested) lists, key terms become definitions, and notes are cut into sections and subsections so each one covers a single idea.
 - **Summary + Google Doc.** *Summarize* (Notes toolbar) shows a short version of the organized notes in the same outline: the same numbered sections, each cut down to a few bullets, steps or a small table, plus a one-line overview, a key-terms table and what to review next. Section headings link to the full notes. The same click saves the summary, the organized notes and the insights to a companion Google Doc (headings show up in the Docs outline). Later clicks update that same doc, and opening it doesn't make the panel treat it as notes: the panel keeps showing the notes it came from.
+- **Lecture recording.** *Record* (Notes toolbar) listens to the room through your microphone, or to an online class or video playing in another tab. Every 20 seconds or so the speech is transcribed through your AI connection and added as a timed line ("[10:42] …") to a *Lecture transcript (NotePilot)* section at the end of your Google Doc. The rewrite then works the key points into your organized notes, next to what you typed on the same topic, and leaves out filler; passages that come only from the recording are labelled *From recording*. Audio is never saved.
 - **Hands-free after setup.** Adaptive polling, debouncing on typing pauses, single-flight jobs, stale-result rejection, cancellation, back-off, offline recovery.
 
 ---
@@ -39,7 +40,7 @@ npm run setup:oauth      # creates a key, writes .env.local, prints your Extensi
 Then in the [Google Cloud Console](https://console.cloud.google.com):
 
 1. **APIs & Services → Library →** enable **Google Docs API** and **Google Drive API** (Drive is only used to save the companion Google Doc).
-2. **OAuth consent screen:** User type *External* (or *Internal* for a Workspace org). Under **Data Access**, add the scopes `https://www.googleapis.com/auth/documents.readonly` and `https://www.googleapis.com/auth/drive.file`, and add your Google account as a **test user**.
+2. **OAuth consent screen:** User type *External* (or *Internal* for a Workspace org). Under **Data Access**, add the scopes `https://www.googleapis.com/auth/documents.readonly` and `https://www.googleapis.com/auth/drive.file` (and, for lecture recording, `https://www.googleapis.com/auth/documents`), and add your Google account as a **test user**.
 3. **Credentials → Create credentials → OAuth client ID →** Application type **Chrome Extension**, Item ID = the Extension ID printed above.
 4. Record the client ID:
    ```bash
@@ -60,6 +61,7 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 2. The panel walks you through three steps: **Sign in with Google** (read-only), **connect an AI model** (key + model names, then *Connect & test*), and **allow sending notes**.
 3. Type. That's it.
 4. Optional: click **Summarize** in the Notes toolbar. The first time, Google asks you to allow NotePilot to *create files* in Drive (it can only see and change files it creates).
+5. Optional: click **Record**, then **Microphone** or **A tab's audio**. The first time, the panel explains what is sent where and asks you to confirm, and Google asks you to allow NotePilot to *edit* your docs (it only ever adds transcript lines to its own section). For a tab, Chrome's share dialog opens: pick the tab and keep *Also share tab audio* on. If the side panel can't show Chrome's microphone prompt, use **Allow microphone** once. Recording uses a transcription model at your AI endpoint (OpenAI: `gpt-4o-mini-transcribe` by default; Settings → Recording); Anthropic's API has no transcription. Only record people who agree to it, and follow your school's rules on recordings.
 
 > **Models.** Defaults are `gpt-5.4-mini` (rewriting) and `gpt-5.4` (insights). Provider presets are included, and any OpenAI-compatible model name works. A fast model keeps the panel current; a stronger one gives better insights. Edit the per-token prices in Settings → Cost limits to match your provider.
 
@@ -106,7 +108,9 @@ content script: "user is typing" ──► debounce: wait for a typing pause (ma
 
 ### Privacy & safety
 
-- **Your notes are read-only by construction:** they are read with the `documents.readonly` scope, and the Docs client issues only `GET`. Saving the companion Google Doc uses `drive.file`, which Google limits to files NotePilot created itself, so it cannot change your notes; it's requested only when you first click *Summarize*, uses only Drive's upload endpoint, and refuses to target the doc it reads from. `tests/readonly.test.ts` fails the build if a Docs write endpoint, a broader scope or another Drive endpoint is ever introduced.
+- **What you wrote is never changed:** notes are read with the `documents.readonly` scope, and the Docs reader issues only `GET`. Saving the companion Google Doc uses `drive.file`, which Google limits to files NotePilot created itself; it's requested only when you first click *Summarize*, uses only Drive's upload endpoint, and refuses to target the doc it reads from.
+- **Recording adds, and only adds, its transcript:** the full Docs scope is requested only when you first start a recording. One module (`google/transcriptWriter.ts`) uses it, to append transcript lines inside NotePilot's own named section at the end of the doc. Before anything is sent, each request is checked: one insertion at the end of that section, plus styling and naming of the text it just inserted; never deleting, replacing or moving anything. Writes carry the revision they were planned against, so Google merges them with your typing. `tests/writes.test.ts` fails the build if another module writes, another write request appears, or a broader scope is introduced.
+- **Recording consent:** nothing is recorded until you start it, and the first time the panel says where the audio goes and asks you to confirm. A red strip shows while it runs; closing the panel stops it. Audio stays in memory only until it is transcribed, silent stretches are not sent, and minutes of audio count toward the daily cost limit.
 - **Consent first:** no note text is sent anywhere until you approve the specific AI endpoint. Changing the endpoint asks again. You can also exclude documents, or require approval per document.
 - **Prompt-injection hardening:** note text travels only as JSON-encoded data, separate from the instructions, and the system prompt treats it as untrusted. Model output is schema-validated, rendered as restricted markdown with no HTML and no images (so injected image links can't exfiltrate data), and links require a click. The extension CSP forbids remote scripts and images.
 - **Redaction (on by default):** email addresses, phone/ID-number patterns and card numbers are replaced before sending. Numbers, units, dates and equations are kept intact.
@@ -146,7 +150,9 @@ cd extension && npm run e2e   # real Chromium end-to-end run (needs a Chromium/C
 | `engine` | stale-result rejection, insight cancellation, Docs 429 back-off with Retry-After (not shortened by typing), offline recovery, invalid AI output → verbatim fallback → later self-healing (edits made during a failing call stay pending), repair calls, consent and budget gates, idle quota use (also while paused), resume from IndexedDB, batched long-doc builds, revision-check fallback, undo keeps paragraph identity |
 | `ai` | OpenAI-compatible request shape, provider quirks (`max_completion_tokens`, temperature), error mapping, retry with validation feedback, cost tracking, cache |
 | `summaryExport` | structure rules (tables, steps, lists, sections), summary follows the notes outline (order, numbers, parent headings), length limits that keep lists and tables valid, validation and pipeline, companion-doc HTML (outline headings, tables, labels, highlighted completions, math as text), Drive save: create, update the same doc, never the source doc, deleted/trashed doc, disabled API, refused permission, token refresh |
-| `readonly` | static guarantees: read-only Docs scope and GET-only Docs client, `drive.file` as the only Drive scope, only the upload endpoint, content script never reads or alters the editor |
+| `writes` | static guarantees: read-only scope in the manifest, GET-only Docs reader, the transcript writer as the only module that writes (checked, transcript-only batch updates against a revision), `drive.file` as the only Drive scope, only the upload endpoint, content script never reads or alters the editor |
+| `recorder` | segments delivered in order, stop at a segment boundary keeps both parts, a track that ends mid-segment keeps its tail, short tails dropped, tracks stopped |
+| `recording` | the transcript section in a model of a Docs body (the first line adds heading + line after your notes; later lines go inside the section even when you typed below it; your text never changes), refusing anything but transcript-only requests, finding the section by name, parsing it back (lines marked, NotePilot's heading skipped), the `recording` flag and rules in the prompt, the writer's requests and a view-only doc, multipart transcription and the proxy route, a session's order/continuity/silence/filler/retries/stop conditions, and on the real engine: transcript-only changes organized about once a minute while typed notes go through at once, and lines the model leaves out neither forced in nor shown as unorganized |
 | `server` | auth, forwarding with the server key, cache, rate limit, daily budget, model allowlist, error passthrough |
 | `e2e/run-e2e.mjs` | The **built extension in real Chromium**: Docs REST API routed to a mutable fake document, AI endpoint routed to a scripted model, and the actual side panel driven through the acceptance scenario, plus DOM-node identity, scroll preservation, collapse persistence, source inspector, multi-window leader election and first-run consent. Screenshots go to `e2e/screenshots/`. |
 
@@ -162,7 +168,8 @@ extension/
   src/core/                 pure logic: types, Docs parser, identity/diff, patch engine, schemas,
                             prompts, context builder, insights, redaction, export
   src/engine/               SyncEngine (polling, debouncing, jobs, integrity, metrics) + state
-  src/google/               chrome.identity auth, read-only Docs API client, companion Google Doc export (drive.file)
+  src/google/               chrome.identity auth, read-only Docs API client, transcript writer, companion Google Doc export (drive.file)
+  src/audio/                lecture recording: microphone or shared-tab audio in segments, the recording session
   src/ai/                   OpenAI-compatible client, rewrite/insight pipelines, usage tracking
   src/storage/              IndexedDB (docs, cache), chrome.storage settings
   src/sidepanel/            React UI: Notes (organized/original/outline), Insights, Settings, setup

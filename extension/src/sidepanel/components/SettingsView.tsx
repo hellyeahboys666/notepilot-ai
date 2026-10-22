@@ -175,6 +175,30 @@ export function SettingsView({
         <AIConnectionForm settings={s} update={update} />
       </Card>
 
+      <Card title="Recording" description="Lecture audio is transcribed through your AI connection. The transcript goes into a section at the end of your Google Doc, and its key points into your notes.">
+        <Field label="Transcription model" hint="OpenAI: gpt-4o-mini-transcribe (cheapest), gpt-4o-transcribe or whisper-1. Other providers need an /audio/transcriptions endpoint." htmlFor="np-rec-model">
+          <input id="np-rec-model" className={inputCls} value={s.recording.model} spellCheck={false} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, model: e.target.value.trim() } }))} />
+        </Field>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Language" hint="e.g. en. Empty = detect" htmlFor="np-rec-lang">
+            <input id="np-rec-lang" className={inputCls} value={s.recording.language} maxLength={8} spellCheck={false} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, language: e.target.value.trim().toLowerCase() } }))} />
+          </Field>
+          <Field label="Seconds per line" htmlFor="np-rec-seg">
+            <input id="np-rec-seg" type="number" min={10} max={60} step={5} className={inputCls} value={s.recording.segmentSeconds} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, segmentSeconds: Math.min(60, Math.max(10, Number(e.target.value) || 20)) } }))} />
+          </Field>
+          <Field label="$ / audio minute" htmlFor="np-rec-price">
+            <input id="np-rec-price" type="number" min={0} step={0.001} className={inputCls} value={s.recording.pricePerMinute} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, pricePerMinute: Math.max(0, Number(e.target.value) || 0) } }))} />
+          </Field>
+        </div>
+        {s.recordingConsent && (
+          <Row label="Recording allowed" hint={`Audio may be sent to ${s.recordingConsent.endpointOrigin} for transcription.`}>
+            <Button size="sm" variant="ghost" onClick={() => update((x) => ({ ...x, recordingConsent: null }))}>
+              Withdraw
+            </Button>
+          </Row>
+        )}
+      </Card>
+
       <Card title="Cost limits">
         <Field label="Daily budget (USD)" hint="Processing pauses when today's estimated cost reaches this amount. 0 = no limit." htmlFor="np-budget">
           <input

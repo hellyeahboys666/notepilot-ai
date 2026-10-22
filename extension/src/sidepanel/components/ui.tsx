@@ -96,6 +96,19 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   external: <path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5" />,
+  mic: (
+    <>
+      <rect x="6" y="2" width="4" height="7.5" rx="2" />
+      <path d="M3.8 7.5a4.2 4.2 0 0 0 8.4 0M8 11.7V14M5.8 14h4.4" />
+    </>
+  ),
+  speaker: (
+    <>
+      <path d="M2.5 6h2.5l3-2.5v9L5 10H2.5z" />
+      <path d="M10.5 5.5a3.5 3.5 0 0 1 0 5M12.3 3.8a6 6 0 0 1 0 8.4" />
+    </>
+  ),
+  stop: <rect x="4.5" y="4.5" width="7" height="7" rx="1.2" fill="currentColor" stroke="none" />,
   google: (
     <>
       <path d="M13.5 8.2c0-.4 0-.8-.1-1.2H8v2.3h3.1a2.7 2.7 0 0 1-1.2 1.8v1.5h1.9c1.1-1 1.7-2.5 1.7-4.4z" fill="#4285F4" stroke="none" />

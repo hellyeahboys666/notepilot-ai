@@ -39,6 +39,14 @@ The student is typing quickly, so notes are often unfinished: a sentence that st
 - Existing units may already contain ${FILL_OPEN}…${FILL_CLOSE} completions. Keep them when you re-emit a unit, unless the student has since written those words themselves (then use the student's words without markers) or the completion no longer fits. If an existing unit's "uncertain" only says the text was unfinished, truncated or cut off, complete the text and set "uncertain" to null.`;
 }
 
+const RECORDING_RULES = `RECORDING
+- Blocks marked "recording": true come from speech-to-text of a lecture or class discussion, which NotePilot adds to the end of the notes while the student types. Each line starts with a time like [10:42]; ignore the times.
+- Fold what the speaker teaches into the organized notes where it belongs conceptually, next to the student's own notes on the same topic. Merge rather than duplicate: when the student and the speaker say the same thing, keep one unit, prefer the student's wording, and cite both blocks.
+- Keep definitions, explanations, steps, examples, numbers, formulas, dates, names and anything the speaker stresses (e.g. "this will be on the test"). Leave out filler, greetings, classroom logistics that are not course content, repetition, false starts and off-topic talk.
+- Speech recognition mishears words. When a term is clearly misheard (e.g. "my toe Kondria"), write the correct term; when it is unclear, keep the wording neutral and say so in "uncertain".
+- Recording blocks do not each have to be cited: cite the ones whose content you use. Never make a section that just repeats the transcript, and never quote it at length.
+- Content from recording blocks has origin "user" (it is part of the notes); do not label it as an expansion.`;
+
 export function rewriteSystemPrompt(s: Settings): string {
   const subject = s.subject.trim() ? `The notes are for the subject: ${JSON.stringify(s.subject.trim().slice(0, 80))}.` : 'Infer the subject from the notes.';
   const expansion = s.aiExpansion
@@ -53,6 +61,7 @@ You receive JSON with:
 - "context_blocks": nearby unchanged source blocks, for orientation.
 - A block with "shortened": true was cut short by NotePilot to save space (its text ends in "…"); the student's text continues. Never treat that as an unfinished note, never complete it, and never mention it in "uncertain".
 - "note_headings": headings the user typed in the raw notes (structural hints only).
+- A block with "recording": true is a line of a live lecture transcript (see RECORDING).
 
 Return a minimal JSON patch that updates the organized document so it faithfully and elegantly represents ALL of the raw notes.
 
@@ -103,6 +112,8 @@ MAKE IT EASY TO UNDERSTAND
 
 ${completionRules(s)}
 
+${RECORDING_RULES}
+
 CONTENT INTEGRITY
 - Every unit has an "origin":
   "user" = information stated in the notes (rewritten);
@@ -110,7 +121,7 @@ CONTENT INTEGRITY
   "expansion" = new background, examples or facts that the notes do not contain.
 ${expansion}
 - Every unit lists in "sources" the source block ids it is derived from. Expansion units list the block ids they build on.
-- Every non-empty source block must be cited by at least one "user" or "clarification" unit. Headings in the raw notes may be used as section titles instead.
+- Every non-empty source block must be cited by at least one "user" or "clarification" unit. Headings in the raw notes may be used as section titles instead. Recording blocks are the exception (see RECORDING).
 - When a source block is modified, update every unit that cites it so it matches the new text.
 - When a source block is removed, rewrite or delete the units that relied on it. Keep nothing that the notes no longer support.
 - Only delete a unit if its information is gone from the notes, or if another unit now contains it and cites its sources.

@@ -43,7 +43,7 @@ export class FakeDocs implements DocsSource {
 export interface RewritePayload {
   organized: { title: string | null; sections: { id: string; title: string; parent: string | null; units: { id: string; content: string; sources: string[]; preview?: boolean }[] }[] };
   changes: {
-    added?: { id: string; text: string }[];
+    added?: { id: string; text: string; recording?: boolean }[];
     modified?: { id: string; before: string; after: string; cited_by: string[] }[];
     removed?: { id: string; text: string; cited_by: string[] }[];
     unrepresented?: { id: string; text: string }[];

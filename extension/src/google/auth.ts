@@ -1,14 +1,18 @@
 /**
  * Google OAuth via the Chrome Identity API.
  *
- * Reading notes uses only the read-only Docs scope. The optional "save to Google Docs" feature
- * additionally asks, when first used, for drive.file: it lets NotePilot create files and change
- * only the files it created itself, so it can never modify the user's notes (see
- * tests/readonly.test.ts, which enforces both statically).
+ * Reading notes uses only the read-only Docs scope. Two optional features ask for more when first used:
+ *  - "save to Google Docs" asks for drive.file, which lets NotePilot create files and change only the files it created;
+ *  - lecture recording asks for the full Docs scope, used only to append transcript lines to NotePilot's own section
+ *    at the end of the notes (google/transcriptWriter.ts).
+ * tests/writes.test.ts enforces both statically.
  */
 export const DOCS_READONLY_SCOPE = 'https://www.googleapis.com/auth/documents.readonly';
 export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 export const EXPORT_SCOPES = [DOCS_READONLY_SCOPE, DRIVE_FILE_SCOPE];
+/** Adding the lecture transcript to the user's doc needs the full Docs scope. Asked for only when a recording starts. */
+export const DOCS_EDIT_SCOPE = 'https://www.googleapis.com/auth/documents';
+export const TRANSCRIPT_SCOPES = [DOCS_READONLY_SCOPE, DOCS_EDIT_SCOPE];
 
 export interface AuthProvider {
   /** Defaults to the read-only Docs scope. */
@@ -33,6 +37,7 @@ const chromeAuth: AuthProvider = {
       const granted = typeof result === 'object' ? result.grantedScopes : undefined;
       const missing = granted ? scopes.filter((sc) => !granted.includes(sc)) : [];
       if (missing.includes(DOCS_READONLY_SCOPE)) throw new AuthRequiredError('Read access to Google Docs was not granted');
+      if (missing.includes(DOCS_EDIT_SCOPE)) throw new AuthRequiredError('Permission to add the transcript to your doc was not granted');
       if (missing.length) throw new AuthRequiredError('Permission to create the Google Doc was not granted');
       return token;
     } catch (e) {

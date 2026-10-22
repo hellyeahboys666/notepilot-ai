@@ -44,6 +44,18 @@ export interface Consent {
   at: number;
 }
 
+/** Lecture recording (speech-to-text through the same AI endpoint). */
+export interface RecordingSettings {
+  /** Transcription model at the AI endpoint: gpt-4o-mini-transcribe, gpt-4o-transcribe or whisper-1 on OpenAI. */
+  model: string;
+  /** Language of the lecture as an ISO-639-1 code ("en", "es"); empty lets the model detect it. */
+  language: string;
+  /** Seconds of audio per transcription request (one transcript line each). */
+  segmentSeconds: number;
+  /** USD per minute of audio, for cost estimates and the daily limit. Edit to match your provider. */
+  pricePerMinute: number;
+}
+
 export interface Settings {
   autoProcess: boolean;
   ai: AISettings;
@@ -59,6 +71,9 @@ export interface Settings {
   privacy: PrivacySettings;
   display: DisplaySettings;
   consent: Consent | null;
+  recording: RecordingSettings;
+  /** The user agreed that recordings may be sent to this endpoint for transcription (separate from note text). */
+  recordingConsent: Consent | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -86,6 +101,8 @@ export const DEFAULT_SETTINGS: Settings = {
   privacy: { redactPII: true, storeLocally: true, perDocApproval: false, approvedDocs: [], excludedDocs: [] },
   display: { showOriginLabels: true, showExpansions: true, highlightUpdates: true },
   consent: null,
+  recording: { model: 'gpt-4o-mini-transcribe', language: '', segmentSeconds: 20, pricePerMinute: 0.003 },
+  recordingConsent: null,
 };
 
 export const PROVIDER_PRESETS: { label: string; baseUrl: string; fast: string; deep: string; jsonMode: JsonMode }[] = [
@@ -126,5 +143,6 @@ export function mergeSettings(stored: Partial<Settings> | undefined): Settings {
     ai: { ...DEFAULT_SETTINGS.ai, ...(s.ai ?? {}) },
     privacy: { ...DEFAULT_SETTINGS.privacy, ...(s.privacy ?? {}) },
     display: { ...DEFAULT_SETTINGS.display, ...(s.display ?? {}) },
+    recording: { ...DEFAULT_SETTINGS.recording, ...(s.recording ?? {}) },
   };
 }

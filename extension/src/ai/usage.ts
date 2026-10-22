@@ -42,6 +42,15 @@ export class UsageTracker {
     this.listeners.forEach((l) => l(this.get()));
   }
 
+  /** Minutes of audio sent for transcription count toward the same daily cost limit. */
+  recordAudio(seconds: number, pricePerMinute: number): void {
+    this.roll();
+    this.usage.requests++;
+    this.usage.costUSD += (Math.max(0, seconds) / 60) * Math.max(0, pricePerMinute);
+    void this.persistence?.save(this.usage);
+    this.listeners.forEach((l) => l(this.get()));
+  }
+
   recordCacheHit(): void {
     this.roll();
     this.usage.cacheHits++;

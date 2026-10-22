@@ -8,7 +8,8 @@ import { AuthRequiredError, type AuthProvider } from './auth';
  *   1. `documents.get?fields=revisionId` — tiny response; unchanged revisionId ⇒ unchanged doc.
  *   2. Full `documents.get` only when the revision changed (or the cheap check is unavailable).
  *
- * Only HTTP GET is used. There is intentionally no write method of any kind (enforced by tests/readonly.test.ts).
+ * Only HTTP GET is used. There is intentionally no write method here: the one write NotePilot makes, the lecture
+ * transcript, lives in transcriptWriter.ts (both enforced by tests/writes.test.ts).
  */
 
 export type DocsErrorKind = 'auth' | 'forbidden' | 'not_found' | 'rate_limit' | 'server' | 'network';

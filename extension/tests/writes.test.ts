@@ -3,8 +3,10 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 /**
- * Static guarantees for spec §11 (read-only Google Docs integration).
- * These scan the shipped source and manifest so a future change cannot quietly add write access.
+ * Static guarantees for how NotePilot touches Google Docs (spec §11, plus lecture recording).
+ * Notes are read, never edited. The one exception is the lecture transcript: google/transcriptWriter.ts may append
+ * lines to NotePilot's own section at the end of the doc, with the full Docs scope asked for only when a recording
+ * starts. These scan the shipped source and manifest so a future change cannot quietly widen either.
  */
 
 const root = resolve(__dirname, '..');
@@ -16,21 +18,32 @@ function files(dir: string): string[] {
 }
 const sources = files(join(root, 'src')).map((p) => ({ p, text: readFileSync(p, 'utf8') }));
 
-describe('read-only Google Docs integration', () => {
-  it('requests only the read-only Docs scope', () => {
+describe('Google Docs: read, and append only to the transcript section', () => {
+  it('the manifest requests only the read-only Docs scope (writing is asked for at the first recording)', () => {
     const manifest = JSON.parse(readFileSync(join(root, 'manifest.base.json'), 'utf8'));
     expect(manifest.oauth2.scopes).toEqual(['https://www.googleapis.com/auth/documents.readonly']);
     expect(manifest.permissions).not.toContain('scripting');
     expect(manifest.permissions).not.toContain('tabs');
   });
 
-  it('contains no Docs write endpoints or write scopes', () => {
+  it('only the transcript writer calls batchUpdate, and only auth.ts names the write scope', () => {
     for (const { p, text } of sources) {
-      expect(text, p).not.toMatch(/batchUpdate/);
-      expect(text, p).not.toMatch(/auth\/documents['"`]/); // full (write) Docs scope
+      if (!p.endsWith('google/transcriptWriter.ts')) expect(text, p).not.toMatch(/batchUpdate/);
+      if (!p.endsWith('google/auth.ts')) expect(text, p).not.toMatch(/auth\/documents['"`]/); // full (write) Docs scope
       // drive.file (files NotePilot creates itself) is the only Drive scope allowed.
       expect(text, p).not.toMatch(/auth\/drive(?!\.file['"`])/);
     }
+    const scopeUsers = sources.filter((s) => /TRANSCRIPT_SCOPES|DOCS_EDIT_SCOPE/.test(s.text)).map((s) => s.p.replace(/.*\/src\//, '')).sort();
+    expect(scopeUsers).toEqual(['google/auth.ts', 'google/transcriptWriter.ts', 'sidepanel/hooks/useRecording.ts']);
+  });
+
+  it('the transcript writer only reads the doc’s end and sends checked, transcript-only batch updates', () => {
+    const writer = sources.find((s) => s.p.endsWith('google/transcriptWriter.ts'))!.text;
+    expect([...writer.matchAll(/call(?:<[^>]+>)?\('(GET|POST)'/g)].map((m) => m[1])).toEqual(['GET', 'POST']);
+    expect(writer).toMatch(/call\('POST', `\$\{API\}\$\{id\}:batchUpdate`/);
+    expect(writer.indexOf('assertTranscriptOnly(requests, snapshot)')).toBeLessThan(writer.indexOf(":batchUpdate"));
+    expect(writer).toMatch(/writeControl: \{ targetRevisionId: snapshot\.revisionId \}/);
+    for (const forbidden of [/deleteContentRange/, /replaceAllText/, /replaceNamedRangeContent/, /deleteNamedRange/, /insertTable|insertInlineImage/]) expect(writer).not.toMatch(forbidden);
   });
 
   it('only the companion-doc exporter talks to Google Drive, and only through the upload endpoint', () => {

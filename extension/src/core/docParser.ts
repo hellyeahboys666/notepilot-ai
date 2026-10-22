@@ -1,5 +1,6 @@
 import type { BlockKind, RawBlock } from './types';
 import { hash53, normalizeText } from './text';
+import { isTranscriptLine, TRANSCRIPT_HEADING, transcriptRange, type DocsNamedRanges } from './transcript';
 
 /**
  * Converts a Google Docs API `documents.get` response into paragraph-level blocks.
@@ -22,6 +23,8 @@ export interface DocsParagraphElement {
   pageBreak?: unknown;
 }
 export interface DocsStructuralElement {
+  startIndex?: number;
+  endIndex?: number;
   paragraph?: {
     elements?: DocsParagraphElement[];
     paragraphStyle?: { namedStyleType?: string };
@@ -33,7 +36,7 @@ export interface DocsStructuralElement {
 }
 export interface DocsTab {
   tabProperties?: { tabId?: string; title?: string; nestingLevel?: number };
-  documentTab?: { body?: { content?: DocsStructuralElement[] } };
+  documentTab?: { body?: { content?: DocsStructuralElement[] }; namedRanges?: DocsNamedRanges };
   childTabs?: DocsTab[];
 }
 export interface DocsDocument {
@@ -41,6 +44,7 @@ export interface DocsDocument {
   title?: string;
   revisionId?: string;
   body?: { content?: DocsStructuralElement[] };
+  namedRanges?: DocsNamedRanges;
   tabs?: DocsTab[];
 }
 
@@ -92,12 +96,24 @@ export function makeRawBlock(kind: BlockKind, text: string, level?: number): Raw
   return { kind, text, level, hash: hash53(`${kind}|${normalizeText(text)}`) };
 }
 
-function walk(content: DocsStructuralElement[] = [], out: RawBlock[]): void {
+type Span = { startIndex: number; endIndex: number } | null;
+const within = (span: Span, el: DocsStructuralElement) => !!span && Number.isInteger(el.startIndex) && el.startIndex! >= span.startIndex && el.startIndex! < span.endIndex;
+
+function walk(content: DocsStructuralElement[] = [], out: RawBlock[], transcript: Span = null): void {
   for (const el of content) {
     if (el.paragraph) {
       const text = paragraphText(el.paragraph.elements);
       if (!normalizeText(text)) continue; // empty paragraphs are layout, not content
       const level = headingLevel(el.paragraph.paragraphStyle?.namedStyleType);
+      // In NotePilot's transcript section, its own lines are marked and its heading is not note content. Anything else
+      // there (the student typing after the last line) stays an ordinary note.
+      if (within(transcript, el)) {
+        if (level !== undefined && text === TRANSCRIPT_HEADING) continue;
+        if (level === undefined && isTranscriptLine(text)) {
+          out.push({ ...makeRawBlock(el.paragraph.bullet ? 'list_item' : 'paragraph', text, el.paragraph.bullet?.nestingLevel), transcript: true });
+          continue;
+        }
+      }
       if (level !== undefined) out.push(makeRawBlock('heading', text, level));
       else if (el.paragraph.bullet) out.push(makeRawBlock('list_item', text, el.paragraph.bullet.nestingLevel ?? 0));
       else out.push(makeRawBlock('paragraph', text));
@@ -134,10 +150,10 @@ export function parseDocument(doc: DocsDocument): ParsedDocument {
       if (all.length > 1 && tab.tabProperties?.title) {
         blocks.push(makeRawBlock('heading', tab.tabProperties.title, 1));
       }
-      walk(tab.documentTab?.body?.content, blocks);
+      walk(tab.documentTab?.body?.content, blocks, transcriptRange(tab.documentTab?.namedRanges));
     }
   } else {
-    walk(doc.body?.content, blocks);
+    walk(doc.body?.content, blocks, transcriptRange(doc.namedRanges));
   }
   return {
     documentId: doc.documentId ?? '',

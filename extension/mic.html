@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NotePilot AI · Microphone</title>
+  </head>
+  <body class="bg-white text-ink-900 dark:bg-ink-950 dark:text-ink-100">
+    <main class="mx-auto mt-24 max-w-md px-6 font-sans">
+      <h1 class="text-[19px] font-semibold tracking-[-0.01em]">Let NotePilot use the microphone</h1>
+      <p class="mt-2 text-[13px] leading-relaxed text-ink-500">
+        Chrome asks for the microphone on a normal page. Allow it here once, then go back to the NotePilot panel and press Record again.
+        NotePilot only listens while a recording is running.
+      </p>
+      <button id="allow" type="button" class="np-focus mt-5 rounded-md bg-ink-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-ink-700 dark:bg-white dark:text-ink-900">Allow microphone</button>
+      <p id="result" class="mt-4 text-[13px]" role="status"></p>
+    </main>
+    <script type="module" src="/src/mic/main.ts"></script>
+  </body>
+</html>

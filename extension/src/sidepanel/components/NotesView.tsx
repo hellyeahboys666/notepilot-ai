@@ -7,6 +7,9 @@ import { loadCollapsed, saveCollapsed } from '../../storage/settingsStore';
 import { Markdown } from './Markdown';
 import { SummaryCard } from './SummaryCard';
 import type { SummaryControls, SummaryState } from '../hooks/useSummary';
+import { needsRecordingConsent, type RecordingControls, type RecordingView } from '../hooks/useRecording';
+import type { AudioSource } from '../../audio/recorder';
+import { RecordButton, RecordStrip } from './RecordControl';
 import { Badge, Icon, Segmented, cx, relativeTime, sectionHeadingClass } from './ui';
 
 const FRESH_MS = 30_000;
@@ -57,6 +60,9 @@ export function NotesView({
   onScrollTargetHandled,
   summary,
   summaryControls,
+  recording,
+  recordingControls,
+  update,
 }: {
   view: EngineView;
   settings: Settings;
@@ -65,10 +71,17 @@ export function NotesView({
   onScrollTargetHandled: () => void;
   summary: SummaryState;
   summaryControls: SummaryControls;
+  recording: RecordingView;
+  recordingControls: RecordingControls;
+  update: (fn: (s: Settings) => Settings) => void;
 }) {
   const [mode, setMode] = useState<'organized' | 'original'>('organized');
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // Recording: the first time (or for a new AI endpoint) the agreement shows before anything is recorded.
+  const [asking, setAsking] = useState<AudioSource | null>(null);
+  const record = (source: AudioSource) => (needsRecordingConsent(settings) ? setAsking(source) : recordingControls.start(source, view.docId));
+  const transcriptIds = useMemo(() => new Set(view.blocks.filter((b) => b.transcript).map((b) => b.id)), [view.blocks]);
   useEffect(() => setSummaryOpen(false), [view.docId]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const now = useNow(5000);
@@ -153,6 +166,7 @@ export function NotesView({
           ]}
         />
         <div className="flex-1" />
+        <RecordButton rec={recording} controls={recordingControls} onChoose={record} />
         {!empty && (
           <button
             type="button"
@@ -186,6 +200,19 @@ export function NotesView({
         )}
       </div>
 
+      <RecordStrip
+        rec={recording}
+        controls={recordingControls}
+        asking={asking}
+        settings={settings}
+        onAllow={() => {
+          const source = asking;
+          setAsking(null);
+          recordingControls.allow(update);
+          if (source) recordingControls.start(source, view.docId);
+        }}
+        onCancel={() => setAsking(null)}
+      />
       {mode === 'organized' && outlineOpen && !empty && <Outline doc={doc} recent={view.recent} now={now} onGo={goTo} />}
       {mode === 'organized' && summaryOpen && !empty && (
         <SummaryCard
@@ -214,7 +241,7 @@ export function NotesView({
             r.kind === 'section' ? (
               <SectionRow key={r.id} id={r.id} title={r.section.title} depth={r.depth} number={r.number} collapsed={r.collapsed} fresh={r.fresh} onToggle={toggle} unsorted={r.id === UNSORTED_SECTION_ID} />
             ) : (
-              <UnitRow key={r.id} unit={r.unit} depth={r.depth} fresh={r.fresh} showLabels={settings.display.showOriginLabels} onShowSource={onShowSource} />
+              <UnitRow key={r.id} unit={r.unit} depth={r.depth} fresh={r.fresh} showLabels={settings.display.showOriginLabels} onShowSource={onShowSource} fromRecording={r.unit.sources.length > 0 && r.unit.sources.every((id) => transcriptIds.has(id))} />
             ),
           )}
         </article>
@@ -308,12 +335,15 @@ const UnitRow = memo(function UnitRow({
   fresh,
   showLabels,
   onShowSource,
+  fromRecording,
 }: {
   unit: OrgUnit;
   depth: number;
   fresh: boolean;
   showLabels: boolean;
   onShowSource: (id: string) => void;
+  /** Every source is a transcript line: the passage came from the lecture recording, not the typed notes. */
+  fromRecording: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const first = useRef(true);
@@ -345,6 +375,13 @@ const UnitRow = memo(function UnitRow({
       style={{ marginLeft: (depth - 1) * 10 }}
     >
       {fresh && <span className="absolute -left-3 top-2 h-1.5 w-1.5 rounded-full bg-accent-500" title="Recently updated" />}
+      {showLabels && fromRecording && !expansion && (
+        <div className="mb-1">
+          <Badge tone="neutral" title="From the lecture recording, not from what you typed">
+            From recording
+          </Badge>
+        </div>
+      )}
       {showLabels && (expansion || clarification) && (
         <div className="mb-1">
           <Badge tone={expansion ? 'violet' : 'sky'} title={expansion ? 'Background added by AI, not from your notes, and not checked against a source' : 'Wording added by AI to clarify your note'}>

@@ -135,8 +135,9 @@ function blockText(b: SourceBlock, redact: boolean, max = MAX_BLOCK_CHARS): stri
  * it says so explicitly ("shortened": true), so the model never mistakes our cut for an
  * unfinished note (and never reports "the source text appears truncated").
  */
-function blockFields(b: SourceBlock, redact: boolean, max = MAX_BLOCK_CHARS): { text: string; shortened?: true } {
-  return { text: blockText(b, redact, max), ...(b.text.length > max ? { shortened: true as const } : {}) };
+function blockFields(b: SourceBlock, redact: boolean, max = MAX_BLOCK_CHARS): { text: string; shortened?: true; recording?: true } {
+  // "recording": a line of the lecture transcript NotePilot writes into the doc (see RECORDING in the prompt).
+  return { text: blockText(b, redact, max), ...(b.text.length > max ? { shortened: true as const } : {}), ...(b.transcript ? { recording: true as const } : {}) };
 }
 
 export function buildRewriteMessages(input: RewriteInput): BuiltPrompt {

@@ -20,6 +20,8 @@ export interface SourceBlock {
   level?: number;
   /** Hash of the normalized text + kind. Whitespace-only edits do not change it. */
   hash: string;
+  /** In NotePilot's lecture transcript section (speech-to-text written by NotePilot), not typed by the user. */
+  transcript?: boolean;
 }
 
 /** A parsed block before identity assignment. */

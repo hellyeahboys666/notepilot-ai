@@ -22,6 +22,8 @@ export interface ApplyContext {
   validSourceIds: Set<string>;
   /** Substantive (non-heading) block ids that must be represented. */
   requiredSourceIds: string[];
+  /** Sources a deletion may leave uncited (transcript lines); others are restored rather than lost. */
+  optionalSourceIds?: Set<string>;
   now: number;
   sourceVersion: number;
   allowExpansion: boolean;
@@ -371,7 +373,7 @@ export function applyPatch(doc: OrganizedDoc, ops: PatchOp[], ctx: ApplyContext,
     const cov = coverage();
     for (const del of deleted.reverse()) {
       if (!isFactual(del.unit.origin)) continue;
-      const lost = del.unit.sources.filter((s) => ctx.validSourceIds.has(s) && !cov.get(s));
+      const lost = del.unit.sources.filter((s) => ctx.validSourceIds.has(s) && !ctx.optionalSourceIds?.has(s) && !cov.get(s));
       if (!lost.length) continue;
       const sectionId = d.sections[del.sectionId] ? del.sectionId : ensureUnsorted();
       d.units[del.unit.id] = { ...del.unit, sectionId };

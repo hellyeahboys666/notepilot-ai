@@ -7,7 +7,8 @@ import type { ChatMessage } from '../core/context';
  * Non-streaming: patches are only useful once complete and validated.
  */
 
-export type AIErrorKind = 'auth' | 'rate_limit' | 'server' | 'network' | 'bad_request' | 'aborted' | 'invalid_output';
+/** `budget`: the provider or the NotePilot server says the money is spent (402); waiting will not help today. */
+export type AIErrorKind = 'auth' | 'rate_limit' | 'budget' | 'server' | 'network' | 'bad_request' | 'aborted' | 'invalid_output';
 
 export class AIError extends Error {
   constructor(

@@ -41,6 +41,7 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         input: {
           sidepanel: resolve(__dirname, 'sidepanel.html'),
+          mic: resolve(__dirname, 'mic.html'),
           background: resolve(__dirname, 'src/background/index.ts'),
         },
         output: {
