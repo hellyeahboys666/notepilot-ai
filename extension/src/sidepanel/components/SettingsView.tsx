@@ -219,6 +219,14 @@ export function SettingsView({
             <input id="np-pout" type="number" min={0} step={0.05} className={inputCls} value={s.ai.outputPricePerM} onChange={(e) => update((x) => ({ ...x, ai: { ...x.ai, outputPricePerM: Math.max(0, Number(e.target.value) || 0) } }))} />
           </Field>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Insights model: input $ / 1M" hint="Blank = same as above" htmlFor="np-dpin">
+            <input id="np-dpin" type="number" min={0} step={0.05} className={inputCls} value={s.ai.deepInputPricePerM ?? ''} onChange={(e) => update((x) => ({ ...x, ai: { ...x.ai, deepInputPricePerM: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) } }))} />
+          </Field>
+          <Field label="Insights model: output $ / 1M" htmlFor="np-dpout">
+            <input id="np-dpout" type="number" min={0} step={0.05} className={inputCls} value={s.ai.deepOutputPricePerM ?? ''} onChange={(e) => update((x) => ({ ...x, ai: { ...x.ai, deepOutputPricePerM: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) } }))} />
+          </Field>
+        </div>
         <p className="text-[11px] text-ink-400">Prices are estimates — set them to your provider's current rates.</p>
         <dl className="grid grid-cols-3 gap-2 rounded-md bg-ink-50 px-3 py-2 text-center dark:bg-ink-900">
           <Stat label="Today" value={`$${today.costUSD.toFixed(3)}`} />

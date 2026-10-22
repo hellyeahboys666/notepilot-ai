@@ -21,7 +21,7 @@ export const createSectionOp = z.object({
   ref: idRef,
   title: z.string().trim().min(1).max(160),
   parent: nullableIdRef.optional().default(null),
-  after: nullableIdRef.optional().default(null),
+  after: nullableIdRef.optional(), // null: first; left out: last (as the prompt says)
 });
 export const updateSectionOp = z.object({
   op: z.literal('update_section'),
@@ -35,7 +35,7 @@ export const createUnitOp = z.object({
   op: z.literal('create_unit'),
   ref: idRef,
   section: idRef,
-  after: nullableIdRef.optional().default(null),
+  after: nullableIdRef.optional(), // null: first; left out: last (as the prompt says)
   type: unitType.optional().default('paragraph'),
   content: content.min(1),
   origin: origin,
@@ -57,7 +57,7 @@ export const moveUnitOp = z.object({
   op: z.literal('move_unit'),
   id: idRef,
   section: idRef,
-  after: nullableIdRef.optional().default(null),
+  after: nullableIdRef.optional(), // null: first; left out: last (as the prompt says)
 });
 export const deleteUnitOp = z.object({ op: z.literal('delete_unit'), id: idRef });
 
@@ -200,15 +200,19 @@ export function stripNullOpFields(json: unknown): unknown {
     ops: j.ops.map((op) => {
       if (!op || typeof op !== 'object') return op;
       const clean: Record<string, unknown> = {};
-      const keepNull = op.op === 'create_section' || op.op === 'update_section' || op.op === 'create_unit' || op.op === 'move_unit';
+      // Strict mode cannot leave a key out, so a null is read by what the op is doing:
+      //  - create_section: parent null = top level, after null = first (as in the prompt);
+      //  - update_section: with a title it is a rename (nulls mean unchanged); without one it is a move, so parent null
+      //    means the top level and after null means first;
+      //  - create_unit / move_unit: after null means append (the model cannot "omit" it here);
+      //  - update_unit: uncertain null clears the note only when the content was rewritten too.
+      const keep = (k: string) =>
+        (op.op === 'create_section' && (k === 'parent' || k === 'after')) ||
+        (op.op === 'update_section' && (op.title === null || op.title === undefined) && (k === 'parent' || k === 'after')) ||
+        (op.op === 'update_unit' && k === 'uncertain' && typeof op.content === 'string');
       for (const [k, v] of Object.entries(op)) {
-        if (v === null && !(keepNull && (k === 'parent' || k === 'after'))) continue;
+        if (v === null && !keep(k)) continue;
         clean[k] = v;
-      }
-      if (op.op === 'update_section') {
-        // In strict mode "parent": null is ambiguous (move-to-root vs. unchanged); treat as unchanged.
-        if (op.parent === null) delete clean.parent;
-        if (op.after === null) delete clean.after;
       }
       return clean;
     }),

@@ -212,7 +212,7 @@ describe('Acceptance workflow (spec §15)', () => {
   });
 
   it('starts processing as soon as typing pauses (content-script activity signal)', async () => {
-    const h = createHarness();
+    const h = createHarness({ settings: { frequency: 'realtime' } }); // the most eager pacing (see the balanced test in engine.test.ts)
     h.docs.set(['first note about photosynthesis']);
     h.ai.latency = 2000;
     h.ai.onRewrite = (p) => ({

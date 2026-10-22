@@ -229,6 +229,43 @@ describe('schema helpers', () => {
     const r = parseRewriteResponse(stripNullOpFields({ title: null, ops: [full] }));
     expect(r.ops).toEqual([{ op: 'delete_unit', id: 'u_1' }]);
   });
+
+  it('strict output keeps the nulls that mean something', () => {
+    const blank = { id: null, ref: null, title: null, parent: null, after: null, section: null, type: null, content: null, origin: null, sources: null, concepts: null, uncertain: null };
+    const ops = (list: object[]) => parseRewriteResponse(stripNullOpFields({ title: null, ops: list.map((o) => ({ ...blank, ...o })) })).ops;
+    expect(ops([{ op: 'update_section', id: 's1', title: 'Renamed' }])).toEqual([{ op: 'update_section', id: 's1', title: 'Renamed' }]); // rename only
+    expect(ops([{ op: 'update_section', id: 's1' }])).toEqual([{ op: 'update_section', id: 's1', parent: null, after: null }]); // move to the top level, first
+    expect((ops([{ op: 'create_unit', ref: 'new:u', section: 's1', type: 'paragraph', content: 'x', origin: 'user', sources: ['b1'] }])[0] as { after?: unknown }).after).toBeUndefined(); // appended, not first (null)
+    expect(ops([{ op: 'update_unit', id: 'u1', content: 'Rewritten.' }])).toEqual([{ op: 'update_unit', id: 'u1', content: 'Rewritten.', uncertain: null }]); // rewriting clears the note
+    expect(ops([{ op: 'update_unit', id: 'u1', sources: ['b1'] }])).toEqual([{ op: 'update_unit', id: 'u1', sources: ['b1'] }]); // otherwise left alone
+  });
+});
+
+describe('placement', () => {
+  it('a new unit with no "after" goes last in its section, and "after": null puts it first (as the prompt says)', () => {
+    const doc = base();
+    const gly = Object.values(doc.sections).find((x) => x.title === 'Glycolysis')!.id;
+    const last = apply(doc, [{ op: 'create_unit', ref: 'new:x', section: gly, content: 'Net yield is 2 ATP.', origin: 'user', sources: ['b9'] }], ctx(['b2', 'b4', 'b5', 'b9'])).doc;
+    expect(last.sections[gly].units.map((u) => last.units[u].content).at(-1)).toBe('Net yield is 2 ATP.');
+    const first = apply(doc, [{ op: 'create_unit', ref: 'new:x', section: gly, after: null, content: 'Net yield is 2 ATP.', origin: 'user', sources: ['b9'] }], ctx(['b2', 'b4', 'b5', 'b9'])).doc;
+    expect(first.units[first.sections[gly].units[0]].content).toBe('Net yield is 2 ATP.');
+  });
+});
+
+describe('a unit the model saw only as a preview', () => {
+  it('cannot take in a new note by citation alone, so the note stays uncovered for the repair pass', () => {
+    const doc = base();
+    const u3 = Object.values(doc.units).find((u) => u.content.startsWith('The ETC'))!.id;
+    const c = ctx(['b2', 'b4', 'b5', 'b9'], { previewUnitIds: new Set([u3]), changedSourceIds: new Set(['b9']) });
+    const r = applyPatch(doc, parseRewriteResponse({ ops: [{ op: 'update_unit', id: u3, sources: ['b4', 'b9'] }] }).ops, c);
+    expect(r.doc.units[u3].sources).toEqual(['b4']);
+    expect(r.uncovered).toEqual(['b9']);
+    // rewriting the unit (so the note's content can appear) is allowed, as is citing an existing note
+    const rewritten = applyPatch(doc, parseRewriteResponse({ ops: [{ op: 'update_unit', id: u3, content: 'The ETC requires oxygen and new detail.', sources: ['b4', 'b9'] }] }).ops, c);
+    expect(rewritten.doc.units[u3].sources).toEqual(['b4', 'b9']);
+    const moved = applyPatch(doc, parseRewriteResponse({ ops: [{ op: 'update_unit', id: u3, sources: ['b4', 'b5'] }] }).ops, c);
+    expect(moved.doc.units[u3].sources).toEqual(['b4', 'b5']);
+  });
 });
 
 describe('applyPatch atomicity', () => {

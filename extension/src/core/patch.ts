@@ -24,6 +24,9 @@ export interface ApplyContext {
   requiredSourceIds: string[];
   /** Sources a deletion may leave uncited (transcript lines); others are restored rather than lost. */
   optionalSourceIds?: Set<string>;
+  /** Units the model saw only as a preview, and the blocks this request is about (new, changed or being repaired). */
+  previewUnitIds?: Set<string>;
+  changedSourceIds?: Set<string>;
   now: number;
   sourceVersion: number;
   allowExpansion: boolean;
@@ -295,7 +298,10 @@ export function applyPatch(doc: OrganizedDoc, ops: PatchOp[], ctx: ApplyContext,
         if (op.content !== undefined) u.content = op.content.trim();
         if (op.type) u.type = op.type;
         if (op.sources) {
-          const s = validSources(op.sources);
+          let s = validSources(op.sources);
+          // A unit seen only as a preview cannot take in a new or changed note by citation alone (the note's content would
+          // never appear): such a source is left uncovered, so the repair pass places it properly.
+          if (ctx.previewUnitIds?.has(id) && op.content === undefined) s = s.filter((x) => u.sources.includes(x) || !ctx.changedSourceIds?.has(x));
           if (s.length) u.sources = s;
         }
         if (op.concepts) u.concepts = op.concepts;

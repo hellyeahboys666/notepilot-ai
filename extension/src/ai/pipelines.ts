@@ -77,7 +77,7 @@ export function createPipelines(
         jsonSchema: kind === 'rewrite' ? REWRITE_JSON_SCHEMA : undefined,
         signal,
       });
-      usage.record(s.ai, result.promptTokens, result.completionTokens);
+      usage.record(s.ai, result.promptTokens, result.completionTokens, kind === 'rewrite' ? 'fast' : 'deep');
       try {
         const parsed = parse(extractJson(result.text));
         void cache?.set(key, result.text).catch(() => undefined);

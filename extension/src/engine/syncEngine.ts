@@ -6,7 +6,7 @@ import { assignIdentities, diffById, isEmptyDiff, type BlockDiff } from '../core
 import { applyInsights, reconcileInsights } from '../core/insights';
 import { applyPatch, changedBetween, checkInvariants, insertFallbackUnits } from '../core/patch';
 import { insightLimits } from '../core/prompts';
-import { POLL_INTERVALS, type Settings } from '../core/settings';
+import { AI_PACING, POLL_INTERVALS, type Settings } from '../core/settings';
 import { isSubstantive } from '../core/text';
 import type { OrganizedDoc, SourceBlock } from '../core/types';
 import { DocsApiError, type DocsSource } from '../google/docsApi';
@@ -47,7 +47,8 @@ export const TIMING = {
   quiet: 1200,
   /** No keystroke for this long ⇒ the user paused typing. */
   typingPause: 2500,
-  /** Start a rewrite at most this long after the first unprocessed change, even if typing continues. */
+  /** Start a rewrite at most this long after the first unprocessed change, even if typing continues (realtime;
+   *  the frequency setting can lengthen it, see AI_PACING). */
   maxWait: 9000,
   /** Minimum gap between Docs API polls triggered by typing activity. */
   minPollGap: 1500,
@@ -58,6 +59,10 @@ export const TIMING = {
   batchChars: 8000,
   /** While recording, transcript-only changes wait this long, so a minute of speech is organized in one call. */
   transcriptWait: 60_000,
+  /** Every this many rewrites (or for a large change), send the whole organized document rather than the relevant part. */
+  fullContextEvery: 8,
+  /** New or changed note text above this many characters counts as a large change. */
+  fullContextChars: 1_500,
 };
 
 const GATE_STATUS: Record<Exclude<ProcessGate, { ok: true }>['reason'], [EngineStatus, string]> = {
@@ -91,6 +96,8 @@ export class SyncEngine {
   private lastPollChanged = false;
   private lastActivityAt = 0;
   private catchUp = true;
+  /** Rewrites since the last one that saw the whole organized document. */
+  private sinceFull = 0;
   private docVisible = true;
   private backoffMs = 0;
   private aiBackoffUntil = 0;
@@ -377,7 +384,7 @@ export class SyncEngine {
     if (!this.firstPendingAt) this.firstPendingAt = this.lastChangeAt || now;
     const quiet = now - this.lastChangeAt >= TIMING.quiet;
     const typingPaused = this.lastActivityAt ? now - this.lastActivityAt >= TIMING.typingPause : !this.lastPollChanged;
-    const overdue = now - this.firstPendingAt >= TIMING.maxWait;
+    const overdue = now - this.firstPendingAt >= Math.max(TIMING.maxWait, AI_PACING[this.deps.getSettings().frequency].maxWait);
     if (!(this.catchUp || (quiet && typingPaused) || overdue)) return;
     // Transcript lines arrive every ~20 s while recording: organize them about once a minute rather than per line.
     // Anything the user typed goes through at once (and takes the waiting lines with it).
@@ -416,12 +423,18 @@ export class SyncEngine {
     const optionalSourceIds = new Set(newProcessed.filter((b) => b.transcript).map((b) => b.id));
 
     try {
-      const built = buildRewriteMessages({ organized: this.st.organized, currentBlocks: current.blocks, batch, settings, reorganizeOnly });
+      // The whole organized document every few rewrites and for large changes, so far-apart topics still get connected.
+      const changedChars = batch.added.reduce((n, b) => n + b.text.length, 0) + batch.modified.reduce((n, m) => n + Math.max(Math.abs(m.after.text.length - m.before.text.length), 80), 0);
+      const full = this.sinceFull + 1 >= TIMING.fullContextEvery || changedChars >= TIMING.fullContextChars;
+      const built = buildRewriteMessages({ organized: this.st.organized, currentBlocks: current.blocks, batch, settings, reorganizeOnly, full });
+      this.sinceFull = built.previewSections.length ? this.sinceFull + 1 : 0; // reset only once the whole document was sent
       const res = await this.deps.ai.rewrite(built.messages, ctl.signal);
       if (!res.cached) pushMetric(this.st.metrics.aiLatency, res.latencyMs);
       if (this.isStale(job)) return;
 
-      const ctx = { validSourceIds, requiredSourceIds, optionalSourceIds, now: Date.now(), sourceVersion: current.version, allowExpansion: settings.aiExpansion };
+      const previewUnits = (sections: string[]) => new Set(sections.flatMap((id) => this.st.organized.sections[id]?.units ?? []));
+      const changedSourceIds = new Set([...batch.added, ...batch.modified.map((m) => m.after)].map((b) => b.id));
+      const ctx = { validSourceIds, requiredSourceIds, optionalSourceIds, previewUnitIds: previewUnits(built.previewSections), changedSourceIds, now: Date.now(), sourceVersion: current.version, allowExpansion: settings.aiExpansion };
       let result = applyPatch(this.st.organized, res.ops, ctx, res.title);
       let doc = result.doc;
 
@@ -433,7 +446,8 @@ export class SyncEngine {
           const repairMsgs = buildRewriteMessages({ organized: doc, currentBlocks: current.blocks, batch: { added: [], modified: [], removed: [] }, settings, repair: uncoveredBlocks });
           const fix = await this.deps.ai.rewrite(repairMsgs.messages, ctl.signal);
           if (this.isStale(job)) return;
-          result = applyPatch(doc, fix.ops, { ...ctx, now: Date.now() }, null);
+          const inRepair = new Set(repairMsgs.previewSections.flatMap((id) => doc.sections[id]?.units ?? []));
+          result = applyPatch(doc, fix.ops, { ...ctx, previewUnitIds: inRepair, changedSourceIds: new Set(uncoveredBlocks.map((b) => b.id)), now: Date.now() }, null);
           doc = result.doc;
         } catch (e) {
           if (ctl.signal.aborted) throw e;
@@ -561,9 +575,10 @@ export class SyncEngine {
     if (!this.st.insightsDirtySections.length && this.st.insightsOrgVersion !== 0 && this.st.insights.length) return;
     if (this.st.insightsOrgVersion === doc.version) return;
     const now = Date.now();
-    if (now - this.lastChangeAt < TIMING.insightsQuiet) return;
+    const pacing = AI_PACING[settings.frequency];
+    if (now - this.lastChangeAt < Math.max(TIMING.insightsQuiet, pacing.insightsQuiet)) return;
     if (!isEmptyDiff(diffById(this.st.processed, this.st.current.blocks))) return;
-    const minGap = { brief: 60_000, standard: 45_000, deep: 30_000 }[settings.insightDepth];
+    const minGap = { brief: 60_000, standard: 45_000, deep: 30_000 }[settings.insightDepth] * pacing.insightsGap;
     if (now - this.st.lastInsightsAt < minGap) return;
     if (now < this.aiBackoffUntil || !this.deps.gate().ok) return;
     void this.runInsights();

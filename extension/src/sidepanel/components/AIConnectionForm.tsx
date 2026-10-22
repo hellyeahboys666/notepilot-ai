@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { chatCompletion } from '../../ai/client';
-import { PROVIDER_PRESETS, endpointOrigin, isAIConfigured, type AISettings, type Settings } from '../../core/settings';
+import { PROVIDER_PRESETS, applyPreset, endpointOrigin, isAIConfigured, presetFor, type AISettings, type Settings } from '../../core/settings';
 import { requestEndpointPermission } from '../runtime';
 import { Button, Segmented, cx } from './ui';
 
@@ -68,10 +68,10 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
           <Field label="Provider">
             <select
               className={inputCls}
-              value={PROVIDER_PRESETS.find((p) => p.baseUrl === draft.baseUrl)?.label ?? 'custom'}
+              value={presetFor(draft)?.label ?? 'custom'}
               onChange={(e) => {
                 const p = PROVIDER_PRESETS.find((x) => x.label === e.target.value);
-                if (p) set({ baseUrl: p.baseUrl, fastModel: p.fast, deepModel: p.deep, jsonMode: p.jsonMode });
+                if (p) set(applyPreset(p));
               }}
             >
               {PROVIDER_PRESETS.map((p) => (

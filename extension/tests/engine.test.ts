@@ -46,7 +46,7 @@ describe('SyncEngine robustness', () => {
   });
 
   it('cancels an in-flight insights request when new notes need rewriting', async () => {
-    const h = createHarness();
+    const h = createHarness({ settings: { frequency: 'realtime' } });
     h.docs.set(['alpha note one']);
     h.ai.onRewrite = simpleModel;
     h.ai.insightLatency = 20_000;
@@ -332,6 +332,34 @@ describe('SyncEngine regressions (independent review findings)', () => {
     expect(h.engine.view().pendingChanges).toBe(0);
     await h.advance(20_000);
     expect(h.ai.rewriteCalls.length).toBe(calls); // no wasted AI work
+    h.engine.stop();
+  });
+
+  it('balanced pacing (the default) batches continuous typing and refreshes insights less often, without losing notes', async () => {
+    const h = createHarness();
+    expect(h.settings.frequency).toBe('balanced');
+    h.docs.set(['alpha note one']);
+    h.ai.onRewrite = simpleModel;
+    h.ai.onInsights = (p) => ({ upsert: [{ category: 'gap', title: 'Q', body: 'B', sectionIds: [p.organized.sections[0].id] }], remove: [] });
+    await h.engine.start();
+    await h.advance(3000);
+    const first = h.ai.rewriteCalls.length;
+    // 20 s of continuous typing, saved every 2 s: at most one forced rewrite (15 s) instead of two (9 s).
+    for (let t = 0; t < 20_000; t += 500) {
+      h.engine.notifyActivity();
+      if (t % 2000 === 0) h.docs.edit((p) => [...p, `typed detail ${t}`]);
+      await h.advance(500);
+    }
+    expect(h.ai.rewriteCalls.length - first).toBeLessThanOrEqual(1);
+    await h.advance(9000);
+    expect(h.engine.view().pendingChanges).toBe(0); // everything typed is organized once typing pauses
+    // Insights wait for 15 s of quiet (8 s on realtime).
+    const before = h.ai.insightCalls;
+    h.docs.edit((p) => [...p, 'one more note']);
+    await h.advance(12_000);
+    expect(h.ai.insightCalls).toBe(before);
+    await h.advance(120_000);
+    expect(h.ai.insightCalls).toBeGreaterThan(before);
     h.engine.stop();
   });
 });

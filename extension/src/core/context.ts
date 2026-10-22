@@ -21,6 +21,8 @@ export interface ChatMessage {
 }
 
 export const ORGANIZED_CHAR_BUDGET = 28_000;
+/** Organized notes up to this size are always sent whole: trimming them saves little. */
+export const SMALL_ORGANIZED_CHARS = 8_000;
 const PREVIEW_CHARS = 140;
 const MAX_BLOCK_CHARS = 12_000;
 const CONTEXT_BLOCK_CHARS = 1_200;
@@ -35,6 +37,8 @@ export interface RewriteInput {
   repair?: SourceBlock[];
   /** Reorganization pass for placeholder units. */
   reorganizeOnly?: boolean;
+  /** Send every section in full (the engine asks for this every few rewrites and for large changes). */
+  full?: boolean;
 }
 
 export interface BuiltPrompt {
@@ -145,9 +149,15 @@ export function buildRewriteMessages(input: RewriteInput): BuiltPrompt {
   const redact = settings.privacy.redactPII;
   const cites = citedBy(organized);
 
+  // Cost: the organized notes are most of each request. Routine edits and repairs send the sections they touch (and
+  // their neighbours by citation, source order and topic) in full and the rest as previews with titles, which keeps
+  // the outline in view. Small notes, a first build, a reorganization pass and the engine's periodic full pass send
+  // everything, as does anything that fits the budget when the engine asks for a full pass.
   let serialized = serializeOrganized(organized, 'all');
-  if (JSON.stringify(serialized.value).length > ORGANIZED_CHAR_BUDGET) {
-    const relevant = relevantSections(organized, currentBlocks, batch, input.repair?.map((b) => b.id));
+  const size = JSON.stringify(serialized.value).length;
+  const whole = organized.rootSections.length === 0 || input.reorganizeOnly || size <= SMALL_ORGANIZED_CHARS || (input.full && !input.repair && size <= ORGANIZED_CHAR_BUDGET);
+  if (!whole) {
+    const relevant = relevantSections(organized, currentBlocks, input.repair ? { added: input.repair, modified: [], removed: [] } : batch, input.repair?.map((b) => b.id));
     serialized = serializeOrganized(organized, relevant);
   }
 

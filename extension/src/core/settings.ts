@@ -22,6 +22,9 @@ export interface AISettings {
   /** USD per 1M tokens, used for cost estimates and limits. Edit to match your provider. */
   inputPricePerM: number;
   outputPricePerM: number;
+  /** USD per 1M tokens for the deep model (insights, summary) when it is priced differently; unset = the prices above. */
+  deepInputPricePerM?: number;
+  deepOutputPricePerM?: number;
 }
 
 export interface PrivacySettings {
@@ -105,12 +108,55 @@ export const DEFAULT_SETTINGS: Settings = {
   recordingConsent: null,
 };
 
-export const PROVIDER_PRESETS: { label: string; baseUrl: string; fast: string; deep: string; jsonMode: JsonMode }[] = [
-  { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', fast: 'gpt-5.4-mini', deep: 'gpt-5.4', jsonMode: 'json_object' },
-  { label: 'Anthropic (OpenAI-compatible)', baseUrl: 'https://api.anthropic.com/v1', fast: 'claude-haiku-5-5', deep: 'claude-opus-5-5', jsonMode: 'prompt_only' },
-  { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', fast: 'openai/gpt-5.4-mini', deep: 'openai/gpt-5.4', jsonMode: 'json_object' },
-  { label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', fast: 'llama3.1', deep: 'llama3.1', jsonMode: 'json_object' },
+/** Provider presets. Prices are USD per 1M input/output tokens for the fast (rewrite) and deep (insights, summary) models. */
+export interface ProviderPreset {
+  label: string;
+  baseUrl: string;
+  fast: string;
+  deep: string;
+  jsonMode: JsonMode;
+  price: { in: number; out: number };
+  deepPrice?: { in: number; out: number };
+}
+export const PROVIDER_PRESETS: ProviderPreset[] = [
+  { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', fast: 'gpt-5.4-mini', deep: 'gpt-5.4', jsonMode: 'json_object', price: { in: 0.75, out: 4.5 }, deepPrice: { in: 2.5, out: 15 } },
+  // The cheapest current OpenAI model rewrites (repeated prompt text is billed at $0.01 / 1M); gpt-5.4-mini writes insights.
+  { label: 'OpenAI, low cost (GPT-6 Luna)', baseUrl: 'https://api.openai.com/v1', fast: 'gpt-6-luna', deep: 'gpt-5.4-mini', jsonMode: 'json_object', price: { in: 0.1, out: 0.5 }, deepPrice: { in: 0.75, out: 4.5 } },
+  // The cheapest good rewrite model: Claude Haiku 5.5 rewrites, Claude Sonnet 5.5 writes insights and summaries.
+  { label: 'Anthropic, low cost (Claude Haiku 5.5)', baseUrl: 'https://api.anthropic.com/v1', fast: 'claude-haiku-5-5', deep: 'claude-sonnet-5-5', jsonMode: 'prompt_only', price: { in: 0.1, out: 0.5 }, deepPrice: { in: 2, out: 10 } },
+  { label: 'Anthropic (OpenAI-compatible)', baseUrl: 'https://api.anthropic.com/v1', fast: 'claude-haiku-5-5', deep: 'claude-opus-5-5', jsonMode: 'prompt_only', price: { in: 0.1, out: 0.5 }, deepPrice: { in: 4, out: 20 } },
+  { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', fast: 'openai/gpt-5.4-mini', deep: 'openai/gpt-5.4', jsonMode: 'json_object', price: { in: 0.75, out: 4.5 }, deepPrice: { in: 2.5, out: 15 } },
+  { label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', fast: 'llama3.1', deep: 'llama3.1', jsonMode: 'json_object', price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 } },
 ];
+
+/** The preset the current settings come from (address and rewrite model), if any. */
+export const presetFor = (ai: Pick<AISettings, 'baseUrl' | 'fastModel' | 'deepModel'>): ProviderPreset | undefined =>
+  PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.fast === ai.fastModel && p.deep === ai.deepModel) ??
+  PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.fast === ai.fastModel) ??
+  PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl);
+
+/** The settings a preset sets, prices included, so the cost limit matches what the provider charges. */
+export const applyPreset = (p: ProviderPreset): Partial<AISettings> => ({
+  baseUrl: p.baseUrl,
+  fastModel: p.fast,
+  deepModel: p.deep,
+  jsonMode: p.jsonMode,
+  inputPricePerM: p.price.in,
+  outputPricePerM: p.price.out,
+  deepInputPricePerM: p.deepPrice?.in,
+  deepOutputPricePerM: p.deepPrice?.out,
+});
+
+/**
+ * How eagerly AI work runs, per frequency setting (cost vs freshness):
+ *  - maxWait: the longest a change waits for a typing pause before it is organized anyway;
+ *  - insightsQuiet / insightsGap: quiet time before insights refresh, and a multiplier on the gap between refreshes.
+ */
+export const AI_PACING: Record<Frequency, { maxWait: number; insightsQuiet: number; insightsGap: number }> = {
+  realtime: { maxWait: 9_000, insightsQuiet: 8_000, insightsGap: 1 },
+  balanced: { maxWait: 12_000, insightsQuiet: 15_000, insightsGap: 2 },
+  saver: { maxWait: 30_000, insightsQuiet: 30_000, insightsGap: 4 },
+};
 
 /** Polling cadences (ms) per frequency setting: [active, recentlyActive, idle, background]. */
 export const POLL_INTERVALS: Record<Frequency, [number, number, number, number]> = {

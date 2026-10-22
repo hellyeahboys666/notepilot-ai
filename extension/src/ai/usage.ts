@@ -32,12 +32,15 @@ export class UsageTracker {
     if (this.usage.day !== today()) this.usage = { day: today(), requests: 0, promptTokens: 0, completionTokens: 0, costUSD: 0, cacheHits: 0 };
   }
 
-  record(ai: AISettings, promptTokens: number, completionTokens: number): void {
+  /** `model`: which of the two models ran; the deep one may have its own prices. */
+  record(ai: AISettings, promptTokens: number, completionTokens: number, model: 'fast' | 'deep' = 'fast'): void {
     this.roll();
     this.usage.requests++;
     this.usage.promptTokens += promptTokens;
     this.usage.completionTokens += completionTokens;
-    this.usage.costUSD += (promptTokens * ai.inputPricePerM + completionTokens * ai.outputPricePerM) / 1_000_000;
+    const inPrice = model === 'deep' ? (ai.deepInputPricePerM ?? ai.inputPricePerM) : ai.inputPricePerM;
+    const outPrice = model === 'deep' ? (ai.deepOutputPricePerM ?? ai.outputPricePerM) : ai.outputPricePerM;
+    this.usage.costUSD += (promptTokens * inPrice + completionTokens * outPrice) / 1_000_000;
     void this.persistence?.save(this.usage);
     this.listeners.forEach((l) => l(this.get()));
   }

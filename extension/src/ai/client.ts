@@ -48,8 +48,8 @@ const quirks = new Map<string, Quirks>();
 export function knownQuirks(url: string, model: string): Quirks {
   const m = model.toLowerCase().replace(/^[\w-]+\//, '');
   const q: Quirks = {};
-  if (/api\.openai\.com/.test(url) || /^(gpt-5|o\d)/.test(m)) q.maxCompletionTokens = true;
-  if (/^(gpt-5|o\d)/.test(m) || /^claude-(opus|sonnet|haiku|fable)-5/.test(m)) q.noTemperature = true;
+  if (/api\.openai\.com/.test(url) || /^(gpt-[5-9]|o\d)/.test(m)) q.maxCompletionTokens = true;
+  if (/^(gpt-[5-9]|o\d)/.test(m) || /^claude-(opus|sonnet|haiku|fable)-5/.test(m)) q.noTemperature = true;
   return q;
 }
 
@@ -70,13 +70,18 @@ export async function chatCompletion(settings: AISettings, req: AIRequest, fetch
     if (!q.noResponseFormat) {
       if (req.jsonMode === 'json_schema' && req.jsonSchema && !q.noSchema) {
         body.response_format = { type: 'json_schema', json_schema: { name: req.jsonSchema.name, schema: req.jsonSchema.schema, strict: true } };
-      } else if (req.jsonMode === 'json_object' || (req.jsonMode === 'json_schema' && q.noSchema)) {
+      } else if (req.jsonMode === 'json_object' || req.jsonMode === 'json_schema') {
+        // json_schema without a schema for this call (insights, summary), or refused by the provider: plain JSON mode
         body.response_format = { type: 'json_object' };
       }
     }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (key) headers.Authorization = `Bearer ${key}`;
-    if (/api\.anthropic\.com/.test(url) && key) headers['x-api-key'] = key;
+    if (/api\.anthropic\.com/.test(url) && key) {
+      headers['x-api-key'] = key;
+      // The user's own key, sent from their own extension: Anthropic asks browser callers to say so explicitly.
+      headers['anthropic-dangerous-direct-browser-access'] = 'true';
+    }
 
     const t0 = performance.now();
     let res: Response;

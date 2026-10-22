@@ -85,6 +85,34 @@ describe('prompt construction', () => {
     expect(relevantSections(doc, blocks, { added: [added], modified: [], removed: [] }).has(photo)).toBe(true);
   });
 
+  it('mid-sized notes send the relevant part on routine edits, and everything on a full pass or when small', () => {
+    // 12 sections of ~900 characters: above the small-notes size, below the old 28k budget.
+    const ops: unknown[] = [];
+    const ids: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const topic = i === 3 ? 'Photosynthesis' : `Topic ${i}`;
+      ops.push({ op: 'create_section', ref: `new:s${i}`, title: topic, parent: null });
+      const words = i === 3 ? 'chlorophyll absorbs light in the thylakoid' : `filler content number ${i}`;
+      ops.push({ op: 'create_unit', ref: `new:u${i}`, section: `new:s${i}`, content: `${words} ${'lorem ipsum '.repeat(70)}`, origin: 'user', sources: [`b${i}`] });
+      ids.push(`b${i}`);
+    }
+    const doc = applyPatch(emptyOrganizedDoc('d'), parseRewriteResponse({ ops }).ops, { validSourceIds: new Set(ids), requiredSourceIds: ids, now: 1, sourceVersion: 1, allowExpansion: true }).doc;
+    const added = block('b99', 'thylakoid membranes hold chlorophyll');
+    const blocks = [...ids.map((id) => block(id, id)), added];
+    const batch = { added: [added], modified: [], removed: [] };
+    const photo = Object.values(doc.sections).find((s) => s.title === 'Photosynthesis')!.id;
+    const routine = buildRewriteMessages({ organized: doc, currentBlocks: blocks, batch, settings: DEFAULT_SETTINGS });
+    expect(routine.fullSections).toContain(photo);
+    expect(routine.previewSections.length).toBeGreaterThan(5); // the rest as titles + previews
+    const full = buildRewriteMessages({ organized: doc, currentBlocks: blocks, batch, settings: DEFAULT_SETTINGS, full: true });
+    expect(full.previewSections).toEqual([]);
+    expect(full.chars).toBeGreaterThan(routine.chars + 4000); // the saving on every routine edit
+    const repair = buildRewriteMessages({ organized: doc, currentBlocks: blocks, batch: { added: [], modified: [], removed: [] }, settings: DEFAULT_SETTINGS, repair: [added], full: true });
+    expect(repair.previewSections.length).toBeGreaterThan(5); // repairs stay targeted
+    const small = applyPatch(emptyOrganizedDoc('d'), parseRewriteResponse({ ops: ops.slice(0, 4) }).ops, { validSourceIds: new Set(ids), requiredSourceIds: ids.slice(0, 2), now: 1, sourceVersion: 1, allowExpansion: true }).doc;
+    expect(buildRewriteMessages({ organized: small, currentBlocks: blocks, batch, settings: DEFAULT_SETTINGS }).previewSections).toEqual([]);
+  });
+
   it('builds insight prompts with existing insights and limits', () => {
     const built = buildInsightMessages({ organized: emptyOrganizedDoc('d'), insights: [], changedSectionIds: [], settings: { ...DEFAULT_SETTINGS, insightDepth: 'brief' } });
     expect(built.messages[0].content).toContain('at most 1 per category');

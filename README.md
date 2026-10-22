@@ -63,7 +63,14 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 4. Optional: click **Summarize** in the Notes toolbar. The first time, Google asks you to allow NotePilot to *create files* in Drive (it can only see and change files it creates).
 5. Optional: click **Record**, then **Microphone** or **A tab's audio**. The first time, the panel explains what is sent where and asks you to confirm, and Google asks you to allow NotePilot to *edit* your docs (it only ever adds transcript lines to its own section). For a tab, Chrome's share dialog opens: pick the tab and keep *Also share tab audio* on. If the side panel can't show Chrome's microphone prompt, use **Allow microphone** once. Recording uses a transcription model at your AI endpoint (OpenAI: `gpt-4o-mini-transcribe` by default; Settings → Recording); Anthropic's API has no transcription. Only record people who agree to it, and follow your school's rules on recordings.
 
-> **Models.** Defaults are `gpt-5.4-mini` (rewriting) and `gpt-5.4` (insights). Provider presets are included, and any OpenAI-compatible model name works. A fast model keeps the panel current; a stronger one gives better insights. Edit the per-token prices in Settings → Cost limits to match your provider.
+> **Models and cost.** Defaults are `gpt-5.4-mini` (rewriting) and `gpt-5.4` (insights). The two cheapest presets rewrite for $0.10 / $0.50 per million tokens: **OpenAI, low cost** (`gpt-6-luna`, with `gpt-5.4-mini` for insights; repeated prompt text is billed at $0.01) and **Anthropic, low cost** (Claude Haiku 5.5, with Claude Sonnet 5.5 for insights; through Anthropic's OpenAI-compatible endpoint Haiku always thinks first, billed as output, and there is no prompt caching). Choosing a preset also sets its prices, so the daily cost limit matches what you're charged; edit them in Settings → Cost limits if your provider's rates differ. Any OpenAI-compatible model name works, including local ones (Ollama).
+
+### Keeping costs down
+
+- **Frequency** (Settings → Processing) sets how eagerly AI work runs. *Balanced* (default): while you keep typing, notes are organized at least every 12 s, and insights refresh after 15 s of quiet, at most half as often as *Realtime*. *Saver* waits up to 30 s. *Realtime* is the most responsive.
+- **Only what's needed is sent.** Small notes go whole. Larger ones send the sections an edit touches (by citation, nearby notes and topic) in full and the rest as titles with short previews; every 8th rewrite, and any large change, sends everything so distant topics still get connected. Repairs are always targeted.
+- **Recording** transcripts are organized about once a minute, and silent stretches are never sent.
+- **JSON mode** *Strict JSON schema* (Settings → AI model, OpenAI) guarantees a well-formed patch, so a malformed reply never costs a retry; it is off by default because strict output cannot leave fields out, which NotePilot reads by convention (see `stripNullOpFields`).
 
 ---
 

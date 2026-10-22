@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { chatCompletion, AIError, knownQuirks } from '../src/ai/client';
 import { createPipelines, type ResponseCache } from '../src/ai/pipelines';
 import { UsageTracker } from '../src/ai/usage';
-import { DEFAULT_SETTINGS, type Settings, isAIConfigured } from '../src/core/settings';
+import { DEFAULT_SETTINGS, PROVIDER_PRESETS, applyPreset, presetFor, type Settings, isAIConfigured } from '../src/core/settings';
 import { createDocsClient, DocsApiError } from '../src/google/docsApi';
 
 const ok = (content: string, usage = { prompt_tokens: 1000, completion_tokens: 500 }) =>
@@ -95,6 +95,46 @@ describe('pipelines', () => {
     const again = await p.rewrite([{ role: 'user', content: 'x' }], new AbortController().signal);
     expect(again.cached).toBe(true);
     expect(sent).toHaveLength(2);
+  });
+});
+
+describe('cost', () => {
+  it('presets set their prices, and the two Anthropic presets are told apart', () => {
+    const low = PROVIDER_PRESETS.find((p) => p.fast === 'claude-haiku-5-5' && p.deep === 'claude-sonnet-5-5')!;
+    expect(applyPreset(low)).toMatchObject({ fastModel: 'claude-haiku-5-5', deepModel: 'claude-sonnet-5-5', inputPricePerM: 0.1, outputPricePerM: 0.5, deepInputPricePerM: 2, deepOutputPricePerM: 10 });
+    expect(presetFor({ baseUrl: low.baseUrl, fastModel: low.fast, deepModel: low.deep })?.label).toBe(low.label);
+    const opus = PROVIDER_PRESETS.find((p) => p.deep === 'claude-opus-5-5')!;
+    expect(presetFor({ baseUrl: opus.baseUrl, fastModel: opus.fast, deepModel: opus.deep })?.label).toBe(opus.label);
+    const openai = PROVIDER_PRESETS.find((p) => p.label === 'OpenAI')!;
+    expect(applyPreset(openai)).toMatchObject({ jsonMode: 'json_object', inputPricePerM: 0.75, deepInputPricePerM: 2.5, deepOutputPricePerM: 15 });
+    const luna = PROVIDER_PRESETS.find((p) => p.fast === 'gpt-6-luna')!;
+    expect(applyPreset(luna)).toMatchObject({ inputPricePerM: 0.1, outputPricePerM: 0.5, deepModel: 'gpt-5.4-mini', deepInputPricePerM: 0.75 });
+    expect(knownQuirks('https://api.openai.com/v1/chat/completions', 'gpt-6-luna')).toEqual({ maxCompletionTokens: true, noTemperature: true });
+  });
+
+  it('insights and summaries are charged at the deep model’s prices when it has its own', () => {
+    const usage = new UsageTracker();
+    const ai = { ...DEFAULT_SETTINGS.ai, inputPricePerM: 0.1, outputPricePerM: 0.5, deepInputPricePerM: 2, deepOutputPricePerM: 10 };
+    usage.record(ai, 1_000_000, 0, 'fast');
+    expect(usage.get().costUSD).toBeCloseTo(0.1);
+    usage.record(ai, 1_000_000, 100_000, 'deep');
+    expect(usage.get().costUSD).toBeCloseTo(0.1 + 2 + 1);
+    usage.record({ ...ai, deepInputPricePerM: undefined, deepOutputPricePerM: undefined }, 1_000_000, 0, 'deep');
+    expect(usage.get().costUSD).toBeCloseTo(3.2); // falls back to the main prices
+  });
+
+  it('strict JSON for patches, plain JSON mode for calls without a schema, and the browser header for Anthropic', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const headers: Record<string, string>[] = [];
+    const fetchImpl = async (_: unknown, init?: RequestInit) => (bodies.push(JSON.parse(String(init!.body))), headers.push(init!.headers as Record<string, string>), ok('{}'));
+    const schema = { name: 'p', schema: { type: 'object' } };
+    await chatCompletion(settings.ai, { model: 'm', messages: [], maxTokens: 5, jsonMode: 'json_schema', jsonSchema: schema }, fetchImpl as typeof fetch);
+    await chatCompletion(settings.ai, { model: 'm', messages: [], maxTokens: 5, jsonMode: 'json_schema' }, fetchImpl as typeof fetch);
+    expect(bodies[0].response_format).toMatchObject({ type: 'json_schema', json_schema: { strict: true } });
+    expect(bodies[1].response_format).toEqual({ type: 'json_object' });
+    await chatCompletion({ ...settings.ai, baseUrl: 'https://api.anthropic.com/v1' }, { model: 'claude-haiku-5-5', messages: [], maxTokens: 5, jsonMode: 'prompt_only' }, fetchImpl as typeof fetch);
+    expect(headers[2]).toMatchObject({ 'x-api-key': 'sk-test', 'anthropic-dangerous-direct-browser-access': 'true' });
+    expect(headers[0]['anthropic-dangerous-direct-browser-access']).toBeUndefined();
   });
 });
 
