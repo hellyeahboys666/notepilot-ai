@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { chatCompletion, AIError, knownQuirks } from '../src/ai/client';
 import { createPipelines, type ResponseCache } from '../src/ai/pipelines';
 import { UsageTracker } from '../src/ai/usage';
-import { DEFAULT_SETTINGS, PROVIDER_PRESETS, applyPreset, presetFor, type Settings, isAIConfigured } from '../src/core/settings';
+import { DEFAULT_SETTINGS, PROVIDER_PRESETS, applyPreset, isAIConfigured, pacedFrequency, presetFor, transcriptionOrigin, type Settings } from '../src/core/settings';
 import { createDocsClient, DocsApiError } from '../src/google/docsApi';
 
 const ok = (content: string, usage = { prompt_tokens: 1000, completion_tokens: 500 }) =>
@@ -95,6 +95,50 @@ describe('pipelines', () => {
     const again = await p.rewrite([{ role: 'user', content: 'x' }], new AbortController().signal);
     expect(again.cached).toBe(true);
     expect(sent).toHaveLength(2);
+  });
+});
+
+describe('free options', () => {
+  const free = PROVIDER_PRESETS.filter((p) => p.free);
+
+  it('every free preset costs nothing and says what it limits and does with notes', () => {
+    expect(free.map((p) => p.label)).toEqual(['Groq (free tier)', 'Google Gemini (free tier)', 'Mistral (free mode)', 'OpenRouter (free models)', 'Ollama (local)']);
+    for (const p of free) {
+      expect(applyPreset(p)).toMatchObject({ inputPricePerM: 0, outputPricePerM: 0, deepInputPricePerM: 0, deepOutputPricePerM: 0 });
+      expect(p.free!.limits.length).toBeGreaterThan(20);
+      expect(p.free!.data.length).toBeGreaterThan(10);
+    }
+    // Cloud free tiers need an adult account; a model on this computer needs none.
+    expect(free.filter((p) => !p.free!.adultsOnly).map((p) => p.label)).toEqual(['Ollama (local)']);
+  });
+
+  it('a typed-in ":free" OpenRouter model stays on the free preset; other models go to the paid one', () => {
+    const base = 'https://openrouter.ai/api/v1';
+    expect(presetFor({ baseUrl: base, fastModel: 'meta-llama/llama-5-8b:free', deepModel: 'meta-llama/llama-5-8b:free' })?.label).toBe('OpenRouter (free models)');
+    expect(presetFor({ baseUrl: base, fastModel: '', deepModel: '' })?.label).toBe('OpenRouter (free models)');
+    expect(presetFor({ baseUrl: base, fastModel: 'anthropic/claude-haiku-5-5', deepModel: 'openai/gpt-5.4' })?.label).toBe('OpenRouter');
+  });
+
+  it('free cloud presets slow the update frequency to Saver, but never speed it up', () => {
+    const groq = free.find((p) => p.label.startsWith('Groq'))!;
+    const ollama = free.find((p) => p.label.startsWith('Ollama'))!;
+    expect(pacedFrequency('realtime', groq)).toBe('saver');
+    expect(pacedFrequency('balanced', groq)).toBe('saver');
+    expect(pacedFrequency('saver', groq)).toBe('saver');
+    expect(pacedFrequency('realtime', ollama)).toBe('realtime');
+    expect(pacedFrequency('balanced', undefined)).toBe('balanced');
+  });
+
+  it('recording goes to the AI address unless a separate one is set, and has none on the on-device model', () => {
+    const groq = { ...DEFAULT_SETTINGS.ai, baseUrl: 'https://api.groq.com/openai/v1' };
+    const same = DEFAULT_SETTINGS.recording;
+    const custom = { ...same, endpoint: 'custom' as const, baseUrl: 'http://localhost:8000/v1' };
+    expect(transcriptionOrigin({ ai: groq, recording: same })).toBe('https://api.groq.com');
+    expect(transcriptionOrigin({ ai: groq, recording: custom })).toBe('http://localhost:8000');
+    expect(transcriptionOrigin({ ai: { ...groq, mode: 'device' }, recording: same })).toBe('');
+    expect(transcriptionOrigin({ ai: { ...groq, mode: 'device' }, recording: custom })).toBe('http://localhost:8000');
+    expect(transcriptionOrigin({ ai: groq, recording: { ...custom, baseUrl: 'not a url' } })).toBe('');
+    expect(isAIConfigured({ ...DEFAULT_SETTINGS.ai, mode: 'device', apiKey: '' })).toBe(true);
   });
 });
 

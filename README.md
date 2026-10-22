@@ -61,7 +61,7 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 2. The panel walks you through three steps: **Sign in with Google** (read-only), **connect an AI model** (key + model names, then *Connect & test*), and **allow sending notes**.
 3. Type. That's it.
 4. Optional: click **Summarize** in the Notes toolbar. The first time, Google asks you to allow NotePilot to *create files* in Drive (it can only see and change files it creates).
-5. Optional: click **Record**, then **Microphone** or **A tab's audio**. The first time, the panel explains what is sent where and asks you to confirm, and Google asks you to allow NotePilot to *edit* your docs (it only ever adds transcript lines to its own section). For a tab, Chrome's share dialog opens: pick the tab and keep *Also share tab audio* on. If the side panel can't show Chrome's microphone prompt, use **Allow microphone** once. Recording uses a transcription model at your AI endpoint (OpenAI: `gpt-4o-mini-transcribe` by default; Settings → Recording); Anthropic's API has no transcription. Only record people who agree to it, and follow your school's rules on recordings.
+5. Optional: click **Record**, then **Microphone** or **A tab's audio**. The first time, the panel explains what is sent where and asks you to confirm, and Google asks you to allow NotePilot to *edit* your docs (it only ever adds transcript lines to its own section). For a tab, Chrome's share dialog opens: pick the tab and keep *Also share tab audio* on. If the side panel can't show Chrome's microphone prompt, use **Allow microphone** once. Recording uses a transcription model at your AI endpoint (OpenAI: `gpt-4o-mini-transcribe` by default), or a separate transcription service chosen in Settings → Recording (see *Free options* below); Anthropic's and Gemini's APIs have no transcription. Only record people who agree to it, and follow your school's rules on recordings.
 
 > **Models and cost.** Defaults are `gpt-5.4-mini` (rewriting) and `gpt-5.4` (insights). The two cheapest presets rewrite for $0.10 / $0.50 per million tokens: **OpenAI, low cost** (`gpt-6-luna`, with `gpt-5.4-mini` for insights; repeated prompt text is billed at $0.01) and **Anthropic, low cost** (Claude Haiku 5.5, with Claude Sonnet 5.5 for insights; through Anthropic's OpenAI-compatible endpoint Haiku always thinks first, billed as output, and there is no prompt caching). Choosing a preset also sets its prices, so the daily cost limit matches what you're charged; edit them in Settings → Cost limits if your provider's rates differ. Any OpenAI-compatible model name works, including local ones (Ollama).
 
@@ -71,6 +71,31 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 - **Only what's needed is sent.** Small notes go whole. Larger ones send the sections an edit touches (by citation, nearby notes and topic) in full and the rest as titles with short previews; every 8th rewrite, and any large change, sends everything so distant topics still get connected. Repairs are always targeted.
 - **Recording** transcripts are organized about once a minute, and silent stretches are never sent.
 - **JSON mode** *Strict JSON schema* (Settings → AI model, OpenAI) guarantees a well-formed patch, so a malformed reply never costs a retry; it is off by default because strict output cannot leave fields out, which NotePilot reads by convention (see `stripNullOpFields`).
+
+### Free options
+
+Every option below is in Settings → AI model, and the panel shows each one's limits and what happens to your notes before you connect. The free cloud tiers are rate-limited, so choosing one also sets **Frequency** to *Saver*. Their terms require users to be **18 or older**; the two options that run on your own computer need no account.
+
+| Option | Cost and limits | Your notes | Setup |
+|---|---|---|---|
+| **This computer** (Chrome's built-in AI, Gemini Nano) | Free, no limits | Never leave your computer | Choose *On this computer*, then *Download the model* (one time). Needs Chrome on Windows, macOS 13+, Linux or a Chromebook Plus, 22 GB of free disk, and a GPU with more than 4 GB of memory or 16 GB of RAM. Slower and less capable than cloud models; no recording. |
+| **Ollama (local)** | Free, no limits | Never leave your computer | Install Ollama, run `ollama pull qwen2.5:7b`, and allow the extension to call it (below). 16 GB of memory recommended. |
+| **Groq (free tier)** | Free: about 200,000 tokens a day (roughly 40–60 notes updates) and 30 requests a minute | Not used for training | Create a key at console.groq.com/keys. |
+| **Google Gemini (free tier)** | Free, limits set per model | **May be used to improve Google's models and read by reviewers.** Don't use it for personal or confidential notes. | Create a key at aistudio.google.com/apikey. |
+| **Mistral (free mode)** | Free, small monthly allowance | May be used for training unless you opt out in Mistral's privacy settings | Create a key at console.mistral.ai. |
+| **OpenRouter (free models)** | Free: 50 requests a day (1,000 after a one-time $10 credit purchase) | Depends on the model's provider | Create a key at openrouter.ai/keys and type a model whose name ends in `:free` (the list changes often). |
+
+Free limits were checked on 2026-10-22; providers change them, so the panel links to each account's own limits page.
+
+**Ollama needs one setting** so Chrome extensions may call it. On macOS, run this, then quit and reopen Ollama:
+
+```bash
+launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"
+```
+
+On Windows or Linux, set the `OLLAMA_ORIGINS` environment variable to `chrome-extension://*` for the Ollama service. Then choose **Ollama (local)** (address `http://localhost:11434/v1`, no key needed).
+
+**Free recording.** Transcription can use a different service from your notes: Settings → Recording → *Transcription*. **Groq (free tier)** runs `whisper-large-v3-turbo` free for about 8 hours of audio a day (adults only, not used for training). **Local Whisper** sends audio to an OpenAI-compatible Whisper server on your computer, such as Speaches, so recordings never leave it. Chrome's built-in AI can't transcribe, so with *On this computer* choose a transcription service before recording.
 
 ---
 

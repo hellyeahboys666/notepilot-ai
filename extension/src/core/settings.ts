@@ -184,7 +184,14 @@ export const ON_DEVICE_ORIGIN = 'on-device';
 export const presetFor = (ai: Pick<AISettings, 'baseUrl' | 'fastModel' | 'deepModel'>): ProviderPreset | undefined =>
   PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.fast === ai.fastModel && p.deep === ai.deepModel) ??
   PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.fast === ai.fastModel) ??
+  // A free OpenRouter model ("…:free") belongs to the free preset, whose models the user types in.
+  (ai.fastModel.endsWith(':free') ? PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.free && !p.fast) : undefined) ??
   PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl);
+
+const EAGERNESS: Frequency[] = ['realtime', 'balanced', 'saver'];
+/** The Frequency a free preset asks for, unless the user already chose a slower one. */
+export const pacedFrequency = (current: Frequency, preset: ProviderPreset | undefined): Frequency =>
+  preset?.pacing && EAGERNESS.indexOf(preset.pacing) > EAGERNESS.indexOf(current) ? preset.pacing : current;
 
 /** The settings a preset sets, prices included, so the cost limit matches what the provider charges. */
 export const applyPreset = (p: ProviderPreset): Partial<AISettings> => ({
