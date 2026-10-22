@@ -125,7 +125,9 @@ cp .env.example .env      # set UPSTREAM_API_KEY, ACCESS_TOKENS=alice:<long-rand
 npm run build && npm start   # http://localhost:8787
 ```
 
-In the extension: Settings → AI model → **NotePilot server**, then enter the server URL (`http://localhost:8787/v1`) and your token. Endpoints: `POST /v1/chat/completions`, `GET /v1/usage`, `GET /health`. Deploy it behind HTTPS for anything beyond localhost.
+In the extension: Settings → AI model → **NotePilot server**, then enter the server URL (`http://localhost:8787/v1`) and your token. Endpoints: `POST /v1/chat/completions`, `POST /v1/audio/transcriptions`, `GET /v1/usage`, `GET /health`. Deploy it behind HTTPS for anything beyond localhost.
+
+`POST /v1/audio/transcriptions` takes the same multipart upload as OpenAI's endpoint (`file`, `model`, and optional `prompt`, `language`, `response_format`) and forwards it to `UPSTREAM_BASE_URL` with the server's key. It has the same per-user token, rate limit, daily budget and `ALLOWED_MODELS` list as chat, so when the allowlist is set it must include the transcription model (for example `gpt-4o-mini-transcribe`). Uploads are capped at 25 MB. Audio and transcripts are never cached, logged or stored: the usage log records bytes, duration when the provider reports it, and token counts. With `response_format=text` the provider reports no token usage, so use `json` (the default) for the daily budget to count transcription.
 
 ---
 

@@ -11,6 +11,8 @@ export interface ServerConfig {
   usageLog: string | null;
   cacheTtlMs: number;
   maxBodyBytes: number;
+  /** Cap for one POST /v1/audio/transcriptions body (OpenAI's own file limit is 25 MB). */
+  maxAudioBytes: number;
   upstreamTimeoutMs: number;
 }
 
@@ -44,6 +46,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     usageLog: env.USAGE_LOG || null,
     cacheTtlMs: Number(env.CACHE_TTL_SEC ?? 600) * 1000,
     maxBodyBytes: 1_500_000,
+    maxAudioBytes: 25 * 1024 * 1024,
     upstreamTimeoutMs: 120_000,
   };
 }
