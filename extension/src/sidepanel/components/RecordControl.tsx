@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AudioSource } from '../../audio/recorder';
-import { endpointOrigin, type Settings } from '../../core/settings';
+import { transcriptionOrigin, type Settings } from '../../core/settings';
 import type { RecordingControls, RecordingView } from '../hooks/useRecording';
+import { getSettings } from '../runtime';
 import { useNow } from './NotesView';
 import { Icon, cx } from './ui';
 
@@ -31,10 +32,10 @@ export function RecordButton({ rec, controls, onChoose }: { rec: RecordingView; 
   }, [open]);
 
   const phase = rec.state?.phase;
-  if (phase === 'recording' || phase === 'finishing') {
+  if (rec.starting || phase === 'recording' || phase === 'finishing') {
     return (
-      <button type="button" onClick={controls.stop} disabled={phase === 'finishing'} title="Stop recording" className={cx(toolbarBtn, 'bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60 dark:bg-red-500/10 dark:text-red-300')}>
-        <Icon name="stop" /> {phase === 'finishing' ? 'Finishing…' : 'Stop'}
+      <button type="button" onClick={controls.stop} disabled={phase === 'finishing'} title={rec.starting ? 'Cancel starting recording' : 'Stop recording'} className={cx(toolbarBtn, 'bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60 dark:bg-red-500/10 dark:text-red-300')}>
+        <Icon name="stop" /> {rec.starting ? 'Cancel' : phase === 'finishing' ? 'Finishing…' : 'Stop'}
       </button>
     );
   }
@@ -43,13 +44,12 @@ export function RecordButton({ rec, controls, onChoose }: { rec: RecordingView; 
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        disabled={rec.starting}
         aria-haspopup="menu"
         aria-expanded={open}
         title="Record a lecture: its transcript goes into your doc and your notes"
         className={cx(toolbarBtn, open ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800', 'disabled:opacity-60')}
       >
-        <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden /> {rec.starting ? 'Starting…' : 'Record'}
+        <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden /> Record
       </button>
       {open && (
         <div role="menu" aria-label="Record from" className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-ink-200 bg-white p-1 font-sans shadow-lg dark:border-ink-700 dark:bg-ink-900">
@@ -96,12 +96,22 @@ export function RecordStrip({
   const running = rec.state?.phase === 'recording' || rec.state?.phase === 'finishing';
   const now = useNow(running ? 1000 : 60_000);
   const shell = 'mx-4 mt-3 rounded-lg border px-3 py-2.5 font-sans text-[12px] leading-snug';
+  const origin = transcriptionOrigin(settings);
+
+  if (asking && !origin) {
+    return (
+      <section aria-label="Before recording" role="alert" className={cx(shell, 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100')}>
+        <p>Choose a transcription service in Settings → Recording before recording. The on-device AI cannot transcribe audio.</p>
+        <button type="button" onClick={onCancel} className="np-focus mt-2 rounded-md px-2.5 py-1 text-[11.5px] font-medium hover:bg-amber-100 dark:hover:bg-amber-400/10">Dismiss</button>
+      </section>
+    );
+  }
 
   if (asking) {
     return (
       <section aria-label="Before recording" className={cx(shell, 'border-ink-200 bg-ink-50/70 text-ink-700 dark:border-ink-800 dark:bg-ink-900/60 dark:text-ink-300')}>
         <p>
-          <strong className="font-semibold text-ink-900 dark:text-ink-50">Record only with permission.</strong> NotePilot sends the audio to {endpointOrigin(settings.ai) || 'your AI provider'} to be
+          <strong className="font-semibold text-ink-900 dark:text-ink-50">Record only with permission.</strong> NotePilot sends the audio to {origin} to be
           transcribed, adds the transcript to the end of this Google Doc (in its first tab), and puts its key points into your notes. The audio is not saved. The transcript stays in the doc for
           anyone it is shared with, and its text goes to the AI along with your notes.
         </p>
@@ -110,7 +120,10 @@ export function RecordStrip({
           Next, Google asks to let NotePilot “see, edit, create and delete all your Google Docs”. NotePilot only ever adds lines to this doc’s transcript section.
         </p>
         <div className="mt-2 flex gap-2">
-          <button type="button" onClick={onAllow} className="np-focus rounded-md bg-ink-900 px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-ink-700 dark:bg-white dark:text-ink-900">
+          <button type="button" onClick={() => {
+            if (transcriptionOrigin(getSettings()) === origin) onAllow(); // consent is only for the address shown here
+            else onCancel();
+          }} className="np-focus rounded-md bg-ink-900 px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-ink-700 dark:bg-white dark:text-ink-900">
             Allow and record
           </button>
           <button type="button" onClick={onCancel} className="np-focus rounded-md px-2.5 py-1 text-[11.5px] font-medium text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800">

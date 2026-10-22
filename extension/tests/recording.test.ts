@@ -233,21 +233,207 @@ describe('writing to Google Docs', () => {
 });
 
 describe('transcription', () => {
-  it('posts the audio and settings as multipart to /audio/transcriptions beside the chat endpoint, or through the proxy', async () => {
-    let seen: { url: string; init: RequestInit } | null = null;
-    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => ((seen = { url, init }), new Response(JSON.stringify({ text: ' Hello class ' }), { status: 200 })));
-    const ai = { ...DEFAULT_SETTINGS.ai, apiKey: 'sk-1', baseUrl: 'https://api.example.com/v1/' };
-    const rec = { ...DEFAULT_SETTINGS.recording, language: 'en' };
-    const out = await transcribe(ai, rec, new Blob(['abc'], { type: 'audio/webm;codecs=opus' }), { prompt: 'previous words' }, fetchImpl as never);
-    expect(out.text).toBe(' Hello class ');
-    expect(seen!.url).toBe('https://api.example.com/v1/audio/transcriptions');
-    expect((seen!.init.headers as Record<string, string>).Authorization).toBe('Bearer sk-1');
-    expect((seen!.init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
-    const form = seen!.init.body as FormData;
+  const ai = { ...DEFAULT_SETTINGS.ai, apiKey: 'note-key', baseUrl: 'https://notes.example.com/v1/', proxyUrl: 'https://notes-proxy.example.com/v1/', proxyToken: 'proxy-token' };
+  const custom = { ...DEFAULT_SETTINGS.recording, endpoint: 'custom' as const, baseUrl: ' https://speech.example.com/openai/v1/// ', apiKey: ' speech-key ', model: 'whisper-large-v3', language: ' es ' };
+  const audio = (type = 'audio/webm;codecs=opus') => new Blob(['abc'], { type });
+  const reply = (body: unknown = { text: ' Hello class ' }, status = 200, headers?: HeadersInit) =>
+    vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify(body), { status, headers }));
+
+  it('same direct posts multipart beside the chat endpoint, ignoring custom credentials and preserving the result shape', async () => {
+    const fetchImpl = reply({ text: ' Hello class ', usage: { total_tokens: 12 }, model: 'provider-model' });
+    const signal = new AbortController().signal;
+    const rec = { ...custom, endpoint: 'same' as const, model: 'gpt-4o-mini-transcribe', language: ' en ' };
+    const out = await transcribe(ai, rec, audio(), { prompt: ' previous words ', signal }, fetchImpl as never);
+    expect(out).toEqual({ text: ' Hello class ', latencyMs: expect.any(Number) });
+    expect(Number.isInteger(out.latencyMs)).toBe(true);
+    expect(out.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('https://notes.example.com/v1/audio/transcriptions');
+    expect(init).toMatchObject({ method: 'POST', signal });
+    expect(init.headers).toEqual({ Authorization: 'Bearer note-key' }); // the browser supplies the multipart Content-Type
+    const form = init.body as FormData;
+    expect([...form.keys()]).toEqual(['file', 'model', 'response_format', 'language', 'prompt']);
     expect([form.get('model'), form.get('language'), form.get('prompt'), form.get('response_format')]).toEqual(['gpt-4o-mini-transcribe', 'en', 'previous words', 'json']);
     expect((form.get('file') as File).name).toBe('segment.webm');
-    await transcribe({ ...ai, mode: 'proxy', proxyUrl: 'http://localhost:8787/v1', proxyToken: 'tok' }, rec, new Blob(['x'], { type: 'audio/webm' }), {}, fetchImpl as never);
-    expect(seen!.url).toBe('http://localhost:8787/v1/audio/transcriptions');
+    expect(await (form.get('file') as File).text()).toBe('abc');
+  });
+
+  it('same proxy keeps its proxy address and token, never the direct or custom keys', async () => {
+    const fetchImpl = reply();
+    await transcribe({ ...ai, mode: 'proxy' }, { ...custom, endpoint: 'same' }, audio(), {}, fetchImpl as never);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('https://notes-proxy.example.com/v1/audio/transcriptions');
+    expect(init.headers).toEqual({ Authorization: 'Bearer proxy-token' });
+    expect((init.body as FormData).get('model')).toBe('whisper-large-v3');
+  });
+
+  it.each(['direct', 'proxy', 'device'] as const)('custom uses only its own host, key and model with %s note AI', async (mode) => {
+    const fetchImpl = reply();
+    await transcribe({ ...ai, mode }, custom, audio(), { prompt: 'previous words' }, fetchImpl as never);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('https://speech.example.com/openai/v1/audio/transcriptions');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({ Authorization: 'Bearer speech-key' });
+    const form = init.body as FormData;
+    expect([...form.keys()]).toEqual(['file', 'model', 'response_format', 'language', 'prompt']);
+    expect([form.get('model'), form.get('language'), form.get('prompt'), form.get('response_format')]).toEqual(['whisper-large-v3', 'es', 'previous words', 'json']);
+    expect((form.get('file') as File).name).toBe('segment.webm');
+    expect(await (form.get('file') as File).text()).toBe('abc');
+  });
+
+  it.each(['localhost', '127.0.0.1'])('custom HTTP %s needs no key and never borrows note or proxy credentials', async (host) => {
+    const fetchImpl = reply();
+    await transcribe({ ...ai, mode: 'proxy' }, { ...custom, baseUrl: `http://${host}:8000/v1/`, apiKey: '  ', language: ' ' }, audio(), { prompt: ' ' }, fetchImpl as never);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`http://${host}:8000/v1/audio/transcriptions`);
+    expect(init.headers).toEqual({});
+    expect([...(init.body as FormData).keys()]).toEqual(['file', 'model', 'response_format']);
+  });
+
+  it.each(['localhost', '127.0.0.1'])('same direct HTTP %s still works without a key', async (host) => {
+    const fetchImpl = reply();
+    await transcribe({ ...ai, baseUrl: `http://${host}:8000/v1/`, apiKey: '' }, DEFAULT_SETTINGS.recording, audio(), {}, fetchImpl as never);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`http://${host}:8000/v1/audio/transcriptions`);
+    expect(init.headers).toEqual({});
+  });
+
+  it.each([
+    ['https://speech.example.com/v1', ''],
+    ['https://speech.example.com/v1', '  '],
+    ['https://localhost/v1', ''],
+  ])('rejects a missing custom key at %s before sending audio (key %j)', async (baseUrl, apiKey) => {
+    const fetchImpl = reply();
+    await expect(transcribe({ ...ai, mode: 'proxy' }, { ...custom, baseUrl, apiKey }, audio(), {}, fetchImpl as never)).rejects.toMatchObject({
+      name: 'AIError', kind: 'auth', message: expect.stringContaining('Settings → Recording'),
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each(['http://speech.example.com/v1', 'http://192.168.1.20:8000/v1', 'http://localhost.example.com/v1', 'http://127.0.0.1.example.com/v1'])('rejects undeclared remote HTTP hosts at %s before sending audio or credentials', async (baseUrl) => {
+    const fetchImpl = reply();
+    await expect(transcribe(ai, { ...custom, baseUrl }, audio(), {}, fetchImpl as never)).rejects.toMatchObject({
+      name: 'AIError', kind: 'bad_request', message: expect.stringContaining('HTTPS'),
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each(['', 'not an address', 'ftp://speech.example.com/v1'])('rejects an invalid custom service address %j before sending audio', async (baseUrl) => {
+    const fetchImpl = reply();
+    await expect(transcribe(ai, { ...custom, baseUrl }, audio(), {}, fetchImpl as never)).rejects.toMatchObject({
+      name: 'AIError', kind: 'bad_request', message: expect.stringContaining('Settings → Recording'),
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('same on-device AI points to Settings → Recording rather than sending to stale AI or custom addresses', async () => {
+    const fetchImpl = reply();
+    await expect(transcribe({ ...ai, mode: 'device' }, { ...custom, endpoint: 'same' }, audio(), {}, fetchImpl as never)).rejects.toMatchObject({
+      name: 'AIError', kind: 'bad_request', message: expect.stringContaining('Choose a transcription service in Settings → Recording'),
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['audio/webm;codecs=opus', 'webm'],
+    ['audio/ogg', 'ogg'],
+    ['audio/mp4', 'mp4'],
+    ['audio/mpeg', 'mp3'],
+    ['audio/wav', 'wav'],
+    ['application/octet-stream', 'webm'],
+  ])('preserves the file name for %s audio', async (type, ext) => {
+    const fetchImpl = reply();
+    await transcribe(ai, custom, audio(type), {}, fetchImpl as never);
+    const file = (fetchImpl.mock.calls[0][1].body as FormData).get('file') as File;
+    expect(file.name).toBe(`segment.${ext}`);
+    expect(file.type).toBe(type);
+    expect(await file.text()).toBe('abc');
+  });
+
+  it('keeps only the trimmed last 600 prompt characters', async () => {
+    const fetchImpl = reply();
+    await transcribe(ai, custom, audio(), { prompt: `  discarded ${'x'.repeat(600)}  ` }, fetchImpl as never);
+    expect((fetchImpl.mock.calls[0][1].body as FormData).get('prompt')).toBe('x'.repeat(600));
+  });
+
+  it.each([
+    [401, 'auth'], [403, 'auth'], [429, 'rate_limit'], [402, 'budget'],
+    [400, 'bad_request'], [404, 'bad_request'], [413, 'bad_request'], [415, 'bad_request'], [503, 'server'],
+  ])('maps custom provider status %i to %s and preserves retry metadata without retrying in the transport', async (status, kind) => {
+    const fetchImpl = reply({ error: { message: 'Provider detail' } }, status as number, { 'retry-after': '2.5' });
+    await expect(transcribe(ai, custom, audio(), {}, fetchImpl as never)).rejects.toMatchObject({
+      name: 'AIError', kind, status, message: 'Provider detail', retryAfterMs: kind === 'rate_limit' || kind === 'server' ? 2500 : undefined,
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('preserves a provider string error', async () => {
+    await expect(transcribe(ai, custom, audio(), {}, reply({ error: 'Invalid transcription key' }, 401) as never)).rejects.toMatchObject({
+      name: 'AIError', kind: 'auth', status: 401, message: 'Invalid transcription key',
+    });
+  });
+
+  it('uses the normal error fallback for a non-JSON response and ignores an invalid retry-after', async () => {
+    const fetchImpl = vi.fn(async () => new Response('unavailable', { status: 503, headers: { 'retry-after': 'later' } }));
+    await expect(transcribe(ai, custom, audio(), {}, fetchImpl as never)).rejects.toMatchObject({
+      name: 'AIError', kind: 'server', status: 503, message: 'AI provider error 503', retryAfterMs: undefined,
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it.each([{}, { text: 12 }, { text: null }])('preserves an empty transcript when the success response has no string text (%j)', async (body) => {
+    await expect(transcribe(ai, custom, audio(), {}, reply(body) as never)).resolves.toEqual({ text: '', latencyMs: expect.any(Number) });
+  });
+
+  it('preserves an empty transcript when the success response is not JSON', async () => {
+    await expect(transcribe(ai, custom, audio(), {}, (async () => new Response('not JSON')) as never)).resolves.toEqual({ text: '', latencyMs: expect.any(Number) });
+  });
+
+  it('reports network failures without retrying in the transport', async () => {
+    const fetchImpl = vi.fn(async () => { throw new Error('Connection refused'); });
+    await expect(transcribe(ai, custom, audio(), {}, fetchImpl as never)).rejects.toMatchObject({ name: 'AIError', kind: 'network', message: 'Connection refused' });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('passes the abort signal through and reports cancellation rather than a network error', async () => {
+    const ctl = new AbortController();
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      expect(init.signal).toBe(ctl.signal);
+      ctl.abort();
+      throw new DOMException('Aborted', 'AbortError');
+    });
+    await expect(transcribe(ai, custom, audio(), { signal: ctl.signal }, fetchImpl as never)).rejects.toMatchObject({ name: 'AIError', kind: 'aborted', message: 'Transcription cancelled' });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('lets the recording session retry custom rate-limit/server failures and counts audio usage once', async () => {
+    let attempts = 0;
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => {
+      attempts++;
+      return attempts < 3
+        ? new Response('{}', { status: attempts === 1 ? 429 : 503, headers: { 'retry-after': String(attempts + 1) } })
+        : new Response(JSON.stringify({ text: 'Lecture words' }));
+    });
+    const write = vi.fn(async () => undefined);
+    const spend = vi.fn(() => true);
+    const sleep = vi.fn(async () => undefined);
+    const onFatal = vi.fn();
+    const session = new RecordingSession('DOC', 'mic', {
+      transcribe: (blob, prompt, signal) => transcribe(ai, custom, blob, { prompt, signal }, fetchImpl as never),
+      write, spend, sleep, now: () => at(10, 40), locale: 'en-GB',
+    }, () => undefined, onFatal);
+    session.push({ blob: audio(), startedAt: at(10, 40), seconds: 20, heard: true });
+    session.finish();
+    await vi.waitFor(() => expect(session.state.phase).toBe('stopped'));
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl.mock.calls.map(([url, init]) => [url, init.headers])).toEqual(Array.from({ length: 3 }, () => ['https://speech.example.com/openai/v1/audio/transcriptions', { Authorization: 'Bearer speech-key' }]));
+    expect(sleep.mock.calls).toEqual([[2000, expect.any(AbortSignal)], [3000, expect.any(AbortSignal)]]);
+    expect(spend.mock.calls).toEqual([[20]]);
+    expect(write).toHaveBeenCalledWith('DOC', '[10:40] Lecture words', expect.any(AbortSignal));
+    expect(onFatal).not.toHaveBeenCalled();
   });
 
   it('maps provider errors to the usual kinds', async () => {
