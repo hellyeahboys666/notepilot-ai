@@ -10,8 +10,9 @@ export type JsonMode = 'json_schema' | 'json_object' | 'prompt_only';
 
 export interface AISettings {
   /** "direct": the extension calls an OpenAI-compatible endpoint with the user's own key.
-   *  "proxy":  the extension calls the NotePilot server, which holds the provider key. */
-  mode: 'direct' | 'proxy';
+   *  "proxy":  the extension calls the NotePilot server, which holds the provider key.
+   *  "device": Chrome's built-in on-device model (Gemini Nano): free, no key, and nothing leaves the computer. */
+  mode: 'direct' | 'proxy' | 'device';
   baseUrl: string;
   apiKey: string;
   proxyUrl: string;
@@ -57,6 +58,11 @@ export interface RecordingSettings {
   segmentSeconds: number;
   /** USD per minute of audio, for cost estimates and the daily limit. Edit to match your provider. */
   pricePerMinute: number;
+  /** Where audio is transcribed. "same": the AI connection above. "custom": its own OpenAI-compatible address and key
+   *  (Groq's free Whisper, a local Whisper server…), so notes and recording can use different providers. */
+  endpoint: 'same' | 'custom';
+  baseUrl: string;
+  apiKey: string;
 }
 
 export interface Settings {
@@ -104,19 +110,31 @@ export const DEFAULT_SETTINGS: Settings = {
   privacy: { redactPII: true, storeLocally: true, perDocApproval: false, approvedDocs: [], excludedDocs: [] },
   display: { showOriginLabels: true, showExpansions: true, highlightUpdates: true },
   consent: null,
-  recording: { model: 'gpt-4o-mini-transcribe', language: '', segmentSeconds: 20, pricePerMinute: 0.003 },
+  recording: { model: 'gpt-4o-mini-transcribe', language: '', segmentSeconds: 20, pricePerMinute: 0.003, endpoint: 'same', baseUrl: '', apiKey: '' },
   recordingConsent: null,
 };
+
+/** What a free option gives, and what it asks in return, in plain words for the settings panel. */
+export interface FreeTier {
+  limits: string;
+  data: string;
+  /** The provider's terms require an adult account (or a guardian's consent). */
+  adultsOnly: boolean;
+}
 
 /** Provider presets. Prices are USD per 1M input/output tokens for the fast (rewrite) and deep (insights, summary) models. */
 export interface ProviderPreset {
   label: string;
   baseUrl: string;
+  /** Empty: the user picks a model (free model lists change too often to fix one here). */
   fast: string;
   deep: string;
   jsonMode: JsonMode;
   price: { in: number; out: number };
   deepPrice?: { in: number; out: number };
+  free?: FreeTier;
+  /** The Frequency setting that keeps within the free limits. */
+  pacing?: Frequency;
 }
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', fast: 'gpt-5.4-mini', deep: 'gpt-5.4', jsonMode: 'json_object', price: { in: 0.75, out: 4.5 }, deepPrice: { in: 2.5, out: 15 } },
@@ -126,8 +144,41 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   { label: 'Anthropic, low cost (Claude Haiku 5.5)', baseUrl: 'https://api.anthropic.com/v1', fast: 'claude-haiku-5-5', deep: 'claude-sonnet-5-5', jsonMode: 'prompt_only', price: { in: 0.1, out: 0.5 }, deepPrice: { in: 2, out: 10 } },
   { label: 'Anthropic (OpenAI-compatible)', baseUrl: 'https://api.anthropic.com/v1', fast: 'claude-haiku-5-5', deep: 'claude-opus-5-5', jsonMode: 'prompt_only', price: { in: 0.1, out: 0.5 }, deepPrice: { in: 4, out: 20 } },
   { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', fast: 'openai/gpt-5.4-mini', deep: 'openai/gpt-5.4', jsonMode: 'json_object', price: { in: 0.75, out: 4.5 }, deepPrice: { in: 2.5, out: 15 } },
-  { label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', fast: 'llama3.1', deep: 'llama3.1', jsonMode: 'json_object', price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 } },
+  // ---- Free options (limits checked 2026-10-22; providers change them, so the panel points to each account page)
+  {
+    label: 'Groq (free tier)', baseUrl: 'https://api.groq.com/openai/v1', fast: 'openai/gpt-oss-20b', deep: 'openai/gpt-oss-120b', jsonMode: 'json_object',
+    price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 }, pacing: 'saver',
+    free: { limits: 'About 200,000 tokens a day (roughly 40–60 notes updates) and 30 requests a minute. Your exact limits are at console.groq.com/settings/limits.', data: 'Groq does not train on what you send.', adultsOnly: true },
+  },
+  {
+    label: 'Google Gemini (free tier)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', fast: 'gemini-3.8-flash', deep: 'gemini-3.8-flash', jsonMode: 'json_object',
+    price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 }, pacing: 'saver',
+    free: { limits: 'Set per model; see yours at aistudio.google.com/rate-limit.', data: 'On the free tier Google may use what you send to improve its models, and people may review it. Don’t use it for personal or confidential notes.', adultsOnly: true },
+  },
+  {
+    label: 'Mistral (free mode)', baseUrl: 'https://api.mistral.ai/v1', fast: 'mistral-small-latest', deep: 'mistral-medium-latest', jsonMode: 'json_object',
+    price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 }, pacing: 'saver',
+    free: { limits: 'A small monthly allowance; see your Mistral console.', data: 'Mistral may train on free-mode data unless you opt out in its privacy settings.', adultsOnly: true },
+  },
+  {
+    label: 'OpenRouter (free models)', baseUrl: 'https://openrouter.ai/api/v1', fast: '', deep: '', jsonMode: 'json_object',
+    price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 }, pacing: 'saver',
+    free: { limits: '50 requests a day (1,000 after a one-time $10 credit purchase). Enter a model whose name ends in ":free" from openrouter.ai/models; they change often.', data: 'Depends on the model’s provider; OpenRouter keeps nothing unless you opt in.', adultsOnly: true },
+  },
+  {
+    label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', fast: 'qwen2.5:7b', deep: 'qwen2.5:7b', jsonMode: 'json_object', price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 },
+    free: { limits: 'None: your Mac does the work. A 2–5 GB model download; 16 GB of memory recommended. Run Ollama with OLLAMA_ORIGINS set to allow Chrome extensions.', data: 'Nothing leaves your computer.', adultsOnly: false },
+  },
 ];
+
+/** Chrome's built-in model, offered as its own mode rather than an address (see AISettings.mode). */
+export const ON_DEVICE: FreeTier = {
+  limits: 'No limits or account. Needs Chrome on Windows, macOS 13+, Linux or a Chromebook Plus, 22 GB of free disk for a one-time model download, and a graphics chip with more than 4 GB of memory or 16 GB of RAM.',
+  data: 'Nothing leaves your computer.',
+  adultsOnly: false,
+};
+/** endpointOrigin() for the on-device mode: consent is still asked, for processing on this computer. */
+export const ON_DEVICE_ORIGIN = 'on-device';
 
 /** The preset the current settings come from (address and rewrite model), if any. */
 export const presetFor = (ai: Pick<AISettings, 'baseUrl' | 'fastModel' | 'deepModel'>): ProviderPreset | undefined =>
@@ -166,6 +217,7 @@ export const POLL_INTERVALS: Record<Frequency, [number, number, number, number]>
 };
 
 export function endpointOrigin(s: AISettings): string {
+  if (s.mode === 'device') return ON_DEVICE_ORIGIN;
   try {
     return new URL(s.mode === 'proxy' ? s.proxyUrl : s.baseUrl).origin;
   } catch {
@@ -174,11 +226,25 @@ export function endpointOrigin(s: AISettings): string {
 }
 
 export function isAIConfigured(s: AISettings): boolean {
+  if (s.mode === 'device') return true; // whether this computer can run it is checked when it is used
   if (!endpointOrigin(s) || !s.fastModel.trim()) return false;
   if (s.mode === 'proxy') return !!s.proxyToken.trim();
   // Local servers (e.g. Ollama) usually need no key.
   const local = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(endpointOrigin(s));
   return local || !!s.apiKey.trim();
+}
+
+/** Where recordings are transcribed: the AI connection, or the separate transcription address. '' when there is none
+ *  (the on-device model has no transcription). */
+export function transcriptionOrigin(s: Pick<Settings, 'ai' | 'recording'>): string {
+  if (s.recording.endpoint === 'custom') {
+    try {
+      return new URL(s.recording.baseUrl).origin;
+    } catch {
+      return '';
+    }
+  }
+  return s.ai.mode === 'device' ? '' : endpointOrigin(s.ai);
 }
 
 export function mergeSettings(stored: Partial<Settings> | undefined): Settings {
