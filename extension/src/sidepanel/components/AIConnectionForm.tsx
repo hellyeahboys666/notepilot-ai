@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatCompletion } from '../../ai/client';
-import { PROVIDER_PRESETS, applyPreset, endpointOrigin, isAIConfigured, presetFor, type AISettings, type Settings } from '../../core/settings';
+import { availability, download, type Availability } from '../../ai/onDevice';
+import { ON_DEVICE, PROVIDER_PRESETS, applyPreset, endpointOrigin, isAIConfigured, presetFor, type AISettings, type Settings } from '../../core/settings';
 import { requestEndpointPermission } from '../runtime';
 import { Button, Segmented, cx } from './ui';
 
@@ -19,54 +20,234 @@ export function Field({ label, hint, children, htmlFor }: { label: string; hint?
   );
 }
 
-/** Configures the OpenAI-compatible endpoint. Testing sends a tiny probe — never note content. */
+/** Configures local AI or an OpenAI-compatible endpoint. Testing uses a tiny probe — never note content. */
 export function AIConnectionForm({ settings, update, compact }: { settings: Settings; update: (fn: (s: Settings) => Settings) => void; compact?: boolean }) {
   const [draft, setDraft] = useState<AISettings>(settings.ai);
   const [state, setState] = useState<{ kind: 'idle' | 'testing' | 'ok' | 'error'; msg?: string }>({ kind: 'idle' });
-  useEffect(() => setDraft(settings.ai), [settings.ai]);
-  const set = (patch: Partial<AISettings>) => {
-    setDraft((d) => ({ ...d, ...patch }));
+  const [model, setModel] = useState<{ availability: Availability | 'checking'; reason?: string }>({ availability: 'checking' });
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [readinessCheck, setReadinessCheck] = useState(0);
+  const connectionController = useRef<AbortController | null>(null);
+  const downloadController = useRef<AbortController | null>(null);
+  const availabilityVersion = useRef(0);
+  const draftRef = useRef(draft);
+  const savedAI = useRef(settings.ai);
+  const onDevice = draft.mode === 'device';
+
+  const replaceDraft = useCallback((next: AISettings) => {
+    const current = draftRef.current;
+    const fields = Object.keys({ ...current, ...next }) as (keyof AISettings)[];
+    if (fields.every((key) => Object.is(current[key], next[key]))) return;
+    connectionController.current?.abort();
+    connectionController.current = null;
+    if (next.mode !== current.mode) {
+      availabilityVersion.current++;
+      downloadController.current?.abort();
+      downloadController.current = null;
+      setDownloadProgress(null);
+      setModel({ availability: 'checking' });
+    }
+    draftRef.current = next;
+    setDraft(next);
     setState({ kind: 'idle' });
+  }, []);
+
+  useEffect(() => {
+    // Other Settings controls (and storage events) also replace settings.ai. Merge
+    // changed, unedited fields without discarding an unsaved connection draft.
+    const previous = savedAI.current;
+    savedAI.current = settings.ai;
+    const fields = Object.keys({ ...previous, ...settings.ai }) as (keyof AISettings)[];
+    // Prices are edited outside this form; an explicit edit there wins over a preset.
+    const prices: (keyof AISettings)[] = ['inputPricePerM', 'outputPricePerM', 'deepInputPricePerM', 'deepOutputPricePerM'];
+    const changed = fields.filter((key) => !Object.is(previous[key], settings.ai[key]) && (prices.includes(key) || Object.is(draftRef.current[key], previous[key])));
+    if (changed.length) {
+      replaceDraft({ ...draftRef.current, ...Object.fromEntries(changed.map((key) => [key, settings.ai[key]])) });
+    }
+  }, [settings.ai, replaceDraft]);
+
+  useEffect(() => () => {
+    availabilityVersion.current++;
+    connectionController.current?.abort();
+    connectionController.current = null;
+    downloadController.current?.abort();
+    downloadController.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (draft.mode !== 'device') return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!downloadController.current) setModel({ availability: 'checking' });
+    const check = async () => {
+      if (!active || draftRef.current.mode !== 'device') return;
+      if (downloadController.current || connectionController.current) {
+        timer = setTimeout(() => void check(), 3000);
+        return;
+      }
+      const version = ++availabilityVersion.current;
+      const current = () => active && draftRef.current.mode === 'device' && version === availabilityVersion.current && !downloadController.current;
+      try {
+        const status = await availability();
+        if (current()) setModel({ availability: status });
+      } catch (e) {
+        if (current()) {
+          setModel({ availability: 'unavailable', reason: `Could not check the local model: ${e instanceof Error ? e.message : String(e)}` });
+        }
+      } finally {
+        if (active) timer = setTimeout(() => void check(), 3000);
+      }
+    };
+    void check();
+    return () => {
+      active = false;
+      availabilityVersion.current++;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [draft.mode, readinessCheck]);
+
+  const set = (patch: Partial<AISettings>) => replaceDraft({ ...draftRef.current, ...patch });
+
+  const downloadModel = async () => {
+    if (draftRef.current.mode !== 'device' || downloadController.current) return;
+    connectionController.current?.abort();
+    connectionController.current = null;
+    const controller = new AbortController();
+    downloadController.current = controller;
+    const current = () => downloadController.current === controller && !controller.signal.aborted && draftRef.current.mode === 'device';
+    availabilityVersion.current++;
+    setState({ kind: 'idle' });
+    setModel({ availability: 'downloading' });
+    setDownloadProgress(0);
+    try {
+      // Invoke the adapter in this click, before any awaited readiness check.
+      // Its LanguageModel.create call needs the original user activation.
+      await download((fraction) => {
+        if (current() && Number.isFinite(fraction)) {
+          setDownloadProgress((previous) => Math.max(previous ?? 0, Math.max(0, Math.min(1, fraction))));
+        }
+      }, controller.signal);
+    } catch (e) {
+      if (current()) setState({ kind: 'error', msg: `Model download failed: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      if (current()) {
+        downloadController.current = null;
+        setDownloadProgress(null);
+        setReadinessCheck((n) => n + 1);
+      }
+    }
+  };
+
+  const cancelDownload = () => {
+    downloadController.current?.abort();
+    downloadController.current = null;
+    availabilityVersion.current++;
+    setDownloadProgress(null);
+    setState({ kind: 'idle' });
+    setReadinessCheck((n) => n + 1);
   };
 
   const connect = async () => {
-    // Host permission for the endpoint must be requested from this click (user gesture).
-    const granted = await requestEndpointPermission({ ...settings, ai: draft });
-    if (!granted) {
-      setState({ kind: 'error', msg: `Chrome permission to contact ${endpointOrigin(draft)} was not granted.` });
-      return;
-    }
+    if (connectionController.current || downloadController.current) return;
+    const connection = draftRef.current;
+    if (!isAIConfigured(connection)) return;
+    const local = connection.mode === 'device';
+    const controller = new AbortController();
+    connectionController.current = controller;
+    const current = () => connectionController.current === controller && !controller.signal.aborted && draftRef.current === connection;
     setState({ kind: 'testing' });
     try {
-      const r = await chatCompletion(draft, {
-        model: draft.fastModel,
+      if (local) {
+        const version = ++availabilityVersion.current;
+        const status = await availability();
+        if (!current()) return;
+        if (version === availabilityVersion.current) setModel({ availability: status });
+        if (status !== 'available') {
+          setState({ kind: 'error', msg: 'The local model is not ready. Check readiness or download it first.' });
+          return;
+        }
+      } else {
+        // Request remote host permission from this click; never request it for local AI.
+        const granted = await requestEndpointPermission({ ...settings, ai: connection });
+        if (!current()) return;
+        if (!granted) {
+          setState({ kind: 'error', msg: `Chrome permission to contact ${endpointOrigin(connection)} was not granted.` });
+          return;
+        }
+      }
+      const r = await chatCompletion(connection, {
+        model: local ? 'on-device' : connection.fastModel,
         messages: [{ role: 'user', content: 'Reply with exactly this JSON and nothing else: {"ok": true}' }],
         maxTokens: 20,
         jsonMode: 'prompt_only',
+        signal: controller.signal,
       });
+      if (!current()) return;
       setState({ kind: 'ok', msg: `Connected · ${r.model} · ${r.latencyMs} ms` });
-      update((s) => ({ ...s, ai: draft }));
+      // Match the existing Settings flow: only a successful test saves the draft.
+      // Keep remote endpoint/key/model fields so switching back does not erase them.
+      update((s) => ({ ...s, ai: connection }));
     } catch (e) {
-      setState({ kind: 'error', msg: e instanceof Error ? e.message : String(e) });
+      if (current()) setState({ kind: 'error', msg: e instanceof Error ? e.message : String(e) });
+    } finally {
+      if (connectionController.current === controller) connectionController.current = null;
     }
   };
 
   const configured = isAIConfigured(draft);
+  const modelStatus = model.reason ?? {
+    checking: 'Checking local model availability…',
+    unavailable: 'Chrome’s built-in AI is not supported or enabled on this computer. Check the requirements above, or use a free provider preset below.',
+    downloadable: 'The local model needs a one-time download.',
+    downloading: 'Downloading the local model…',
+    available: 'Local model ready on this computer.',
+  }[model.availability];
   return (
     <div className="space-y-3">
       <Segmented
         label="Connection type"
+        size={compact ? 'sm' : 'md'}
         value={draft.mode}
         onChange={(mode) => set({ mode })}
         options={[
           { value: 'direct', label: 'My API key' },
           { value: 'proxy', label: 'NotePilot server' },
+          { value: 'device', label: 'On this computer (free)' },
         ]}
       />
-      {draft.mode === 'direct' ? (
+      {onDevice ? (
         <>
-          <Field label="Provider">
+          <Field label="AI endpoint" htmlFor="np-device-endpoint">
+            <input id="np-device-endpoint" className={cx(inputCls, 'opacity-60')} value="On this computer · no endpoint or API key" disabled />
+          </Field>
+          <div className="space-y-2 rounded-md bg-ink-50 px-3 py-2 text-[11.5px] leading-relaxed text-ink-600 dark:bg-ink-800/50 dark:text-ink-300">
+            <p>{ON_DEVICE.limits}</p>
+            <p className="font-medium">{ON_DEVICE.data}</p>
+            <p role="status" aria-live="polite" className={cx(model.availability === 'available' && 'text-emerald-600 dark:text-emerald-400')}>{modelStatus}</p>
+            {model.availability === 'downloading' && (
+              <div className="space-y-1">
+                <progress aria-label="Local model download" max={1} value={downloadProgress ?? undefined} className="h-1.5 w-full accent-emerald-500" />
+                {downloadProgress !== null && <p>{Math.round(downloadProgress * 100)}% downloaded</p>}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {(model.availability === 'downloadable' || model.availability === 'downloading') && (
+                <Button size="sm" onClick={() => void downloadModel()} disabled={downloadProgress !== null || state.kind === 'testing'}>
+                  {model.availability === 'downloading' && downloadProgress === null ? 'Show download progress' : 'Download the model'}
+                </Button>
+              )}
+              {downloadProgress !== null && <Button size="sm" variant="ghost" onClick={cancelDownload}>Cancel</Button>}
+              <Button size="sm" onClick={() => setReadinessCheck((n) => n + 1)} disabled={model.availability === 'checking' || downloadProgress !== null || state.kind === 'testing'}>Check readiness</Button>
+            </div>
+            <p>Other free options: choose My API key → Provider for Groq, Gemini, Mistral, OpenRouter (free models), or Ollama (local). Check each preset’s limits and data terms.</p>
+            <Button size="sm" variant="ghost" onClick={() => set({ mode: 'direct' })}>See free provider presets</Button>
+          </div>
+        </>
+      ) : draft.mode === 'direct' ? (
+        <>
+          <Field label="Provider" htmlFor="np-provider">
             <select
+              id="np-provider"
               className={inputCls}
               value={presetFor(draft)?.label ?? 'custom'}
               onChange={(e) => {
@@ -99,13 +280,13 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
       )}
       <div className={cx('grid gap-3', compact ? 'grid-cols-1' : 'grid-cols-2')}>
         <Field label="Fast model (rewriting)" htmlFor="np-fast">
-          <input id="np-fast" className={inputCls} value={draft.fastModel} onChange={(e) => set({ fastModel: e.target.value.trim() })} spellCheck={false} />
+          <input id="np-fast" className={cx(inputCls, onDevice && 'opacity-60')} value={onDevice ? 'Chrome built-in model' : draft.fastModel} disabled={onDevice} onChange={(e) => set({ fastModel: e.target.value.trim() })} spellCheck={false} />
         </Field>
         <Field label="Deep model (insights)" htmlFor="np-deep">
-          <input id="np-deep" className={inputCls} value={draft.deepModel} onChange={(e) => set({ deepModel: e.target.value.trim() })} spellCheck={false} />
+          <input id="np-deep" className={cx(inputCls, onDevice && 'opacity-60')} value={onDevice ? 'Chrome built-in model' : draft.deepModel} disabled={onDevice} onChange={(e) => set({ deepModel: e.target.value.trim() })} spellCheck={false} />
         </Field>
       </div>
-      {!compact && (
+      {!compact && !onDevice && (
         <Field label="Structured output" hint="Use JSON schema if your provider supports strict structured outputs; plain prompting works everywhere.">
           <select className={inputCls} value={draft.jsonMode} onChange={(e) => set({ jsonMode: e.target.value as AISettings['jsonMode'] })}>
             <option value="json_object">JSON mode (response_format: json_object)</option>
@@ -114,13 +295,14 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
           </select>
         </Field>
       )}
-      <div className="flex items-center gap-2">
-        <Button variant="primary" onClick={() => void connect()} disabled={!configured || state.kind === 'testing'}>
+      <p className="text-[11px] leading-snug text-ink-400">Connect &amp; test saves this connection. The test uses a small sample, never your notes.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" onClick={() => void connect()} disabled={!configured || state.kind === 'testing' || (onDevice && (model.availability !== 'available' || downloadProgress !== null))}>
           {state.kind === 'testing' ? 'Testing…' : 'Connect & test'}
         </Button>
-        {state.kind === 'ok' && <span className="text-[11.5px] text-emerald-600 dark:text-emerald-400">{state.msg}</span>}
+        {state.kind === 'ok' && <span role="status" className="text-[11.5px] text-emerald-600 dark:text-emerald-400">{state.msg}</span>}
       </div>
-      {state.kind === 'error' && <p className="rounded-md bg-red-50 px-2.5 py-1.5 text-[11.5px] text-red-700 dark:bg-red-500/10 dark:text-red-300">{state.msg}</p>}
+      {state.kind === 'error' && <p role="alert" className="rounded-md bg-red-50 px-2.5 py-1.5 text-[11.5px] text-red-700 dark:bg-red-500/10 dark:text-red-300">{state.msg}</p>}
     </div>
   );
 }
