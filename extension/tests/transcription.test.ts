@@ -460,12 +460,12 @@ describe('recording settings and consent text', () => {
     expect(groq).toContain('Custom (OpenAI-compatible)');
     expect(groq).toContain('Transcription address');
     expect(groq).toContain('Transcription API key');
-    for (const limit of ['20 requests', '2,000', '7,200', '28,800', 'Adults only', 'does not train']) expect(groq).toContain(limit);
+    for (const limit of ['20 requests', '2,000', '7,200', '28,800', '18 or older', 'Local Whisper, which needs no account', 'does not train']) expect(groq).toContain(limit);
     settings.recording = { ...settings.recording, ...applyTranscriptionPreset(preset('Local')) };
     const local = panel(settings);
     expect(local).toContain('Systran/faster-whisper-small');
     expect(local).toContain('Run a Speaches server');
-    expect(local).not.toContain('Adults only');
+    expect(local).not.toContain('18 or older');
   });
 
   it('distinguishes stale consent from permission for the current service', () => {

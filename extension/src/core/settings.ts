@@ -167,7 +167,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
   {
     label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', fast: 'qwen2.5:7b', deep: 'qwen2.5:7b', jsonMode: 'json_object', price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 },
-    free: { limits: 'None: your Mac does the work. A 2–5 GB model download; 16 GB of memory recommended. Run Ollama with OLLAMA_ORIGINS set to allow Chrome extensions.', data: 'Nothing leaves your computer.', adultsOnly: false },
+    free: { limits: 'None: your computer does the work. A 2–5 GB model download; 16 GB of memory recommended. Run Ollama with OLLAMA_ORIGINS set to allow Chrome extensions (see the README).', data: 'Nothing leaves your computer.', adultsOnly: false },
   },
 ];
 
@@ -181,11 +181,11 @@ export const ON_DEVICE: FreeTier = {
 export const ON_DEVICE_ORIGIN = 'on-device';
 
 /** The preset the current settings come from (address and rewrite model), if any. */
-export const presetFor = (ai: Pick<AISettings, 'baseUrl' | 'fastModel' | 'deepModel'>): ProviderPreset | undefined =>
+export const presetFor = (ai: Pick<AISettings, 'baseUrl' | 'fastModel' | 'deepModel'> & Partial<Pick<AISettings, 'inputPricePerM'>>): ProviderPreset | undefined =>
   PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.fast === ai.fastModel && p.deep === ai.deepModel) ??
   PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.fast === ai.fastModel) ??
-  // A free OpenRouter model ("…:free") belongs to the free preset, whose models the user types in.
-  (ai.fastModel.endsWith(':free') ? PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.free && !p.fast) : undefined) ??
+  // The free OpenRouter preset's models are typed in: a "…:free" model, or one typed after choosing it (its $0 prices still set), stays on it.
+  (ai.fastModel.endsWith(':free') || ai.inputPricePerM === 0 ? PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl && p.free && !p.fast) : undefined) ??
   PROVIDER_PRESETS.find((p) => p.baseUrl === ai.baseUrl);
 
 const EAGERNESS: Frequency[] = ['realtime', 'balanced', 'saver'];

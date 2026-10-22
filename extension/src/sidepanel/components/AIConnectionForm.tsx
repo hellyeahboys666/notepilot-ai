@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatCompletion } from '../../ai/client';
 import { availability, download, type Availability } from '../../ai/onDevice';
-import { ON_DEVICE, PROVIDER_PRESETS, applyPreset, endpointOrigin, isAIConfigured, presetFor, type AISettings, type Settings } from '../../core/settings';
+import { ON_DEVICE, PROVIDER_PRESETS, applyPreset, endpointOrigin, isAIConfigured, pacedFrequency, presetFor, type AISettings, type Settings } from '../../core/settings';
 import { requestEndpointPermission } from '../runtime';
+import { FreeTierNote } from './FreeTierNote';
 import { Button, Segmented, cx } from './ui';
 
 export const inputCls =
@@ -186,7 +187,8 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
       setState({ kind: 'ok', msg: `Connected · ${r.model} · ${r.latencyMs} ms` });
       // Match the existing Settings flow: only a successful test saves the draft.
       // Keep remote endpoint/key/model fields so switching back does not erase them.
-      update((s) => ({ ...s, ai: connection }));
+      // A free tier's rate limits slow updates to its pacing (never speeding them up).
+      update((s) => ({ ...s, ai: connection, frequency: connection.mode === 'direct' ? pacedFrequency(s.frequency, presetFor(connection)) : s.frequency }));
     } catch (e) {
       if (current()) setState({ kind: 'error', msg: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -195,6 +197,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
   };
 
   const configured = isAIConfigured(draft);
+  const preset = draft.mode === 'direct' ? presetFor(draft) : undefined;
   const modelStatus = model.reason ?? {
     checking: 'Checking local model availability…',
     unavailable: 'Chrome’s built-in AI is not supported or enabled on this computer. Check the requirements above, or use a free provider preset below.',
@@ -220,9 +223,8 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
           <Field label="AI endpoint" htmlFor="np-device-endpoint">
             <input id="np-device-endpoint" className={cx(inputCls, 'opacity-60')} value="On this computer · no endpoint or API key" disabled />
           </Field>
+          <FreeTierNote free={ON_DEVICE} />
           <div className="space-y-2 rounded-md bg-ink-50 px-3 py-2 text-[11.5px] leading-relaxed text-ink-600 dark:bg-ink-800/50 dark:text-ink-300">
-            <p>{ON_DEVICE.limits}</p>
-            <p className="font-medium">{ON_DEVICE.data}</p>
             <p role="status" aria-live="polite" className={cx(model.availability === 'available' && 'text-emerald-600 dark:text-emerald-400')}>{modelStatus}</p>
             {model.availability === 'downloading' && (
               <div className="space-y-1">
@@ -249,7 +251,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
             <select
               id="np-provider"
               className={inputCls}
-              value={presetFor(draft)?.label ?? 'custom'}
+              value={preset?.label ?? 'custom'}
               onChange={(e) => {
                 const p = PROVIDER_PRESETS.find((x) => x.label === e.target.value);
                 if (p) set(applyPreset(p));
@@ -261,6 +263,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
               <option value="custom">Custom (OpenAI-compatible)</option>
             </select>
           </Field>
+          {preset?.free && <FreeTierNote free={preset.free} savesFrequency={pacedFrequency(settings.frequency, preset) !== settings.frequency} />}
           <Field label="Base URL" htmlFor="np-base">
             <input id="np-base" className={inputCls} value={draft.baseUrl} onChange={(e) => set({ baseUrl: e.target.value.trim() })} spellCheck={false} />
           </Field>

@@ -9,6 +9,7 @@ import { indexedDbStore } from '../../storage/db';
 import { clearAllLocalSettingsData } from '../../storage/settingsStore';
 import { usage } from '../runtime';
 import { AIConnectionForm, Field, inputCls } from './AIConnectionForm';
+import { FreeTierNote } from './FreeTierNote';
 import { Button, Icon, Segmented, Switch } from './ui';
 
 function Card({ title, children, description }: { title: string; description?: string; children: ReactNode }) {
@@ -217,11 +218,7 @@ export function SettingsView({
           <p role="status" className="text-[11.5px] text-amber-700 dark:text-amber-300">The on-device AI cannot transcribe audio. Choose a transcription service above to record.</p>
         )}
         {transcriptionPreset?.free && (
-          <div className="space-y-1 rounded-md bg-ink-50 px-3 py-2 text-[11.5px] text-ink-500 dark:bg-ink-900 dark:text-ink-400">
-            <p>{transcriptionPreset.free.limits}</p>
-            <p>{transcriptionPreset.free.data}</p>
-            {transcriptionPreset.free.adultsOnly && <p>Adults only (18+): this service requires an adult account.</p>}
-          </div>
+          <FreeTierNote free={transcriptionPreset.free} about="Your audio" instead="Local Whisper, which needs no account" />
         )}
         <Field label="Transcription model" hint="The service must offer /audio/transcriptions. Presets set the model and estimated price; adjust these to match your provider." htmlFor="np-rec-model">
           <input id="np-rec-model" className={inputCls} value={s.recording.model} spellCheck={false} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, model: e.target.value.trim() } }))} />

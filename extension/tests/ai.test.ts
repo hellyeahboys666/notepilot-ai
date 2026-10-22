@@ -116,6 +116,8 @@ describe('free options', () => {
     const base = 'https://openrouter.ai/api/v1';
     expect(presetFor({ baseUrl: base, fastModel: 'meta-llama/llama-5-8b:free', deepModel: 'meta-llama/llama-5-8b:free' })?.label).toBe('OpenRouter (free models)');
     expect(presetFor({ baseUrl: base, fastModel: '', deepModel: '' })?.label).toBe('OpenRouter (free models)');
+    expect(presetFor({ baseUrl: base, fastModel: 'meta-llama/lla', deepModel: '', inputPricePerM: 0 })?.label).toBe('OpenRouter (free models)'); // still typing
+    expect(presetFor({ baseUrl: base, fastModel: 'anthropic/claude-haiku-5-5', deepModel: 'openai/gpt-5.4', inputPricePerM: 0.75 })?.label).toBe('OpenRouter');
     expect(presetFor({ baseUrl: base, fastModel: 'anthropic/claude-haiku-5-5', deepModel: 'openai/gpt-5.4' })?.label).toBe('OpenRouter');
   });
 
