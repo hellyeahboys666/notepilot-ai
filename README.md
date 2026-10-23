@@ -74,12 +74,14 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 
 ### Free options
 
+Step-by-step setup for every option, with pictures: **[docs/SETUP.md](docs/SETUP.md)**.
+
 Every option below is in Settings → AI model, and the panel shows each one's limits and what happens to your notes before you connect. The free cloud tiers are rate-limited, so choosing one also sets **Frequency** to *Saver*. Their terms require users to be **18 or older**; the two options that run on your own computer need no account.
 
 | Option | Cost and limits | Your notes | Setup |
 |---|---|---|---|
 | **This computer** (Chrome's built-in AI, Gemini Nano) | Free, no limits | Never leave your computer | Choose *On this computer*, then *Download the model* (one time). Needs Chrome on Windows, macOS 13+, Linux or a Chromebook Plus, 22 GB of free disk, and a GPU with more than 4 GB of memory or 16 GB of RAM. Slower and less capable than cloud models; no recording. |
-| **Ollama (local)** | Free, no limits | Never leave your computer | Install Ollama, run `ollama pull qwen2.5:7b`, and allow the extension to call it (below). 16 GB of memory recommended. |
+| **Ollama (local)** | Free, no limits | Never leave your computer | Install the Ollama app from ollama.com/download, run `ollama pull gemma3:4b` (3.4 GB), and allow the extension to call it (below). Runs on 8 GB of memory, better with 16; Ollama only uses memory while it is running. |
 | **Groq (free tier)** | Free: about 200,000 tokens a day (roughly 40–60 notes updates) and 30 requests a minute | Not used for training | Create a key at console.groq.com/keys. |
 | **Google Gemini (free tier)** | Free, limits set per model | **May be used to improve Google's models and read by reviewers.** Don't use it for personal or confidential notes. | Create a key at aistudio.google.com/apikey. |
 | **Mistral (free mode)** | Free, small monthly allowance | May be used for training unless you opt out in Mistral's privacy settings | Create a key at console.mistral.ai. |

@@ -6,3 +6,4 @@ server/dist/
 .env
 .env.local
 *.pem
+.DS_Store

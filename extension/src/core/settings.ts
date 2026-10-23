@@ -166,8 +166,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     free: { limits: '50 requests a day (1,000 after a one-time $10 credit purchase). Enter a model whose name ends in ":free" from openrouter.ai/models; they change often.', data: 'Depends on the model’s provider; OpenRouter keeps nothing unless you opt in.', adultsOnly: true },
   },
   {
-    label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', fast: 'qwen2.5:7b', deep: 'qwen2.5:7b', jsonMode: 'json_object', price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 },
-    free: { limits: 'None: your computer does the work. A 2–5 GB model download; 16 GB of memory recommended. Run Ollama with OLLAMA_ORIGINS set to allow Chrome extensions (see the README).', data: 'Nothing leaves your computer.', adultsOnly: false },
+    // gemma3:4b: on an 8 GB M2 it wrote ~29 tokens/s with no thinking step (qwen3.5:4b: ~22, and it thinks first by default).
+    label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', fast: 'gemma3:4b', deep: 'gemma3:4b', jsonMode: 'json_object', price: { in: 0, out: 0 }, deepPrice: { in: 0, out: 0 },
+    free: { limits: 'None: your computer does the work. A 3.4 GB model download (ollama pull gemma3:4b); runs on 8 GB of memory, better with 16. Run Ollama with OLLAMA_ORIGINS set to allow Chrome extensions (see docs/SETUP.md).', data: 'Nothing leaves your computer.', adultsOnly: false },
   },
 ];
 
