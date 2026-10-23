@@ -42,6 +42,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
   const [model, setModel] = useState<{ availability: Availability | 'checking'; reason?: string }>({ availability: 'checking' });
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [readinessCheck, setReadinessCheck] = useState(0);
+  const [stalled, setStalled] = useState(false);
   const connectionController = useRef<AbortController | null>(null);
   const downloadController = useRef<AbortController | null>(null);
   const availabilityVersion = useRef(0);
@@ -88,6 +89,16 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
     downloadController.current?.abort();
     downloadController.current = null;
   }, []);
+
+  // Chrome downloads the model itself and can say "downloading" for good without starting (most often: too little
+  // free disk). After a while at 0, say what to check instead of showing a bar that never moves.
+  const noProgress = model.availability === 'downloading' && !downloadProgress;
+  useEffect(() => {
+    setStalled(false);
+    if (!noProgress) return;
+    const timer = setTimeout(() => setStalled(true), 15_000);
+    return () => clearTimeout(timer);
+  }, [noProgress]);
 
   useEffect(() => {
     if (draft.mode !== 'device') return;
@@ -216,7 +227,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
     checking: 'Checking local model availability…',
     unavailable: 'Chrome’s built-in AI is not supported or enabled on this computer. Check the requirements above, or use a free provider preset below.',
     downloadable: 'The local model needs a one-time download.',
-    downloading: 'Downloading the local model…',
+    downloading: 'Chrome is downloading the local model…',
     available: 'Local model ready on this computer.',
   }[model.availability];
   return (
@@ -240,7 +251,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
           <FreeTierNote free={ON_DEVICE} />
           <div className="space-y-2 rounded-md bg-ink-50 px-3 py-2 text-[11.5px] leading-relaxed text-ink-600 dark:bg-ink-800/50 dark:text-ink-300">
             <p role="status" aria-live="polite" className={cx(model.availability === 'available' && 'text-emerald-600 dark:text-emerald-400')}>{modelStatus}</p>
-            {model.availability === 'downloading' && (
+            {model.availability === 'downloading' && downloadProgress !== null && (
               <div className="space-y-1">
                 <progress aria-label="Local model download" max={1} value={downloadProgress ?? undefined} className="h-1.5 w-full accent-emerald-500" />
                 {downloadProgress !== null && <p>{Math.round(downloadProgress * 100)}% downloaded</p>}
@@ -249,12 +260,19 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
             <div className="flex flex-wrap items-center gap-2">
               {(model.availability === 'downloadable' || model.availability === 'downloading') && (
                 <Button size="sm" onClick={() => void downloadModel()} disabled={downloadProgress !== null || state.kind === 'testing'}>
-                  {model.availability === 'downloading' && downloadProgress === null ? 'Show download progress' : 'Download the model'}
+                  {model.availability === 'downloading' && downloadProgress === null ? 'Show progress' : 'Download the model'}
                 </Button>
               )}
               {downloadProgress !== null && <Button size="sm" variant="ghost" onClick={cancelDownload}>Cancel</Button>}
               <Button size="sm" onClick={() => setReadinessCheck((n) => n + 1)} disabled={model.availability === 'checking' || downloadProgress !== null || state.kind === 'testing'}>Check readiness</Button>
             </div>
+            {stalled && (
+              <p role="alert" className="rounded-md bg-amber-50 px-2.5 py-1.5 text-amber-900 ring-1 ring-amber-200/70 dark:bg-amber-400/10 dark:text-amber-100 dark:ring-amber-400/20">
+                Chrome hasn’t started the download. It fetches the model itself (a few GB), and only when the drive that holds your Chrome profile has at least 22 GB free and the connection isn’t
+                metered; it removes the model again if free space later drops below 10 GB. Free up space, restart Chrome, and see{' '}
+                <code className="font-mono text-[11px]">chrome://on-device-internals</code> for Chrome’s reason.
+              </p>
+            )}
             <p>Other free options: choose My API key → Provider for Groq, Gemini, Mistral, OpenRouter (free models), or Ollama (local). Check each preset’s limits and data terms.</p>
             <Button size="sm" variant="ghost" onClick={() => set({ mode: 'direct' })}>See free provider presets</Button>
           </div>
