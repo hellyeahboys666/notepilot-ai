@@ -209,7 +209,8 @@ describe('SyncEngine robustness', () => {
     third.stop();
   });
 
-  it('batches the initial build of long documents', async () => {
+  // 300 paragraphs through the real engine: real CPU work, which can pass 5 s while other test files run alongside.
+  it('batches the initial build of long documents', { timeout: 20_000 }, async () => {
     const h = createHarness();
     const paras = Array.from({ length: 300 }, (_, i) => `Paragraph ${i}: ${'detail '.repeat(14)}`);
     h.docs.set(paras);
