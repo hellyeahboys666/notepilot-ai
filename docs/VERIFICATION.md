@@ -21,7 +21,7 @@ What was verified while building NotePilot AI, how, and what could not be verifi
 
 ## Test inventory (all passing)
 
-- **Extension:** 278 tests in 15 files: docParser 5, identity 7, patch 21, context 7, completion 12, summaryExport 19, acceptance 2, engine 18, ai 16, writes 6, recording 64, recorder 5, onDevice 41, transcription 48, freeTier 7.
+- **Extension:** 286 tests in 16 files: docParser 5, identity 7, patch 21, context 7, completion 12, summaryExport 19, acceptance 2, engine 18, ai 16, writes 6, recording 64, recorder 5, onDevice 41, transcription 48, freeTier 7, simpleRewrite 8.
 - **Server:** 15 tests.
 - **Browser E2E:** 21 checks, built extension in Chromium 141 (headless):
   1. organizes unstructured notes automatically
@@ -67,6 +67,7 @@ The review also flagged a design gap, which is now fixed as well: a paragraph de
 - **A separate transcription service** (Settings → Recording): OpenAI, Groq's free `whisper-large-v3-turbo`, a local Speaches server (`Systran/faster-whisper-small`), Mistral `voxtral-mini-latest`, or a custom address and key. Consent, the consent text and Chrome host permission follow the transcription address; with the on-device model and no service, Record says where to choose one.
 - Written in parallel by Hermes Agent (on-device model; transcription service) and Claude Code (presets, notes, pacing, docs). Hermes's model hit its usage limit before the last checks, so Claude Code finished both: corrected the Mistral model id from Mistral's docs, added the schema fallback, merged and checked everything.
 - Independent review (a separate Claude agent, given only the code): consent, host permission, the recording start/cancel state and on-device session lifetimes held up. Fixed from it: recording "same as the AI connection" now follows the notes to the new service's own transcription model (Groq's Whisper rather than an OpenAI model name Groq would reject); an API key is dropped when its address moves to another host, for notes and recording alike, so it is never sent to a different provider; the free-tier note and Saver apply only when a preset's models are in use, not to a paid account at the same address; the Record message names the actual cause; the overflow listener also hears Chrome's older `quotaoverflow` event.
+- On-device rewrites, after a real test showed every note left "not yet organized": NotePilot's patch task (about 3,600 tokens of rules, ops that must cite note ids) is too much for Chrome's small model, which could answer with ops that cited nothing. It now gets a simpler task (`core/simpleRewrite.ts`): rewrite each new or changed note and name its section, with ids limited to the notes sent. NotePilot turns the reply into the usual patch, so every returned note is cited and placed, and notes shown as written are picked up by the next pass. Insights and the summary get exact reply shapes instead of "any JSON object". Smaller batches (2,000 characters) and four minutes per call, for a model that writes far more slowly.
 - Not verified here: Chrome's real built-in model (download, speed, output quality and its context window with long notes), real free-tier limits, and a real Speaches or Groq transcription. These need a supported Chrome on capable hardware and the providers' accounts.
 
 ## Version 0.4.0: lecture recording, lower AI costs, a summary in the notes' outline

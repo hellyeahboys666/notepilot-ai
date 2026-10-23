@@ -5,6 +5,7 @@ import { insightsSystemPrompt, rewriteSystemPrompt, insightLimits, summarySystem
 import { sectionOrder } from './patch';
 import { contentWords, truncate } from './text';
 import { redactPII } from './redact';
+import { buildSimpleRewrite, type SimpleRewrite } from './simpleRewrite';
 
 /**
  * Builds the model input for incremental updates.
@@ -46,6 +47,8 @@ export interface BuiltPrompt {
   fullSections: string[];
   previewSections: string[];
   chars: number;
+  /** Chrome's built-in model gets a simpler task, turned into the patch by NotePilot (see simpleRewrite.ts). */
+  simple?: SimpleRewrite;
 }
 
 function citedBy(doc: OrganizedDoc): Map<string, string[]> {
@@ -145,6 +148,7 @@ function blockFields(b: SourceBlock, redact: boolean, max = MAX_BLOCK_CHARS): { 
 }
 
 export function buildRewriteMessages(input: RewriteInput): BuiltPrompt {
+  if (input.settings.ai.mode === 'device') return buildSimpleRewrite(input);
   const { organized, currentBlocks, batch, settings } = input;
   const redact = settings.privacy.redactPII;
   const cites = citedBy(organized);

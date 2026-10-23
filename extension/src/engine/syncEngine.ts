@@ -57,6 +57,9 @@ export const TIMING = {
   maxBackoff: 120_000,
   /** Max characters of new/changed note text sent in one rewrite call (long docs are batched). */
   batchChars: 8000,
+  /** Chrome's built-in model writes far more slowly than a cloud model: smaller batches, and more time for each call. */
+  deviceBatchChars: 2000,
+  deviceTimeout: 240_000,
   /** While recording, transcript-only changes wait this long, so a minute of speech is organized in one call. */
   transcriptWait: 60_000,
   /** Every this many rewrites (or for a large change), send the whole organized document rather than the relevant part. */
@@ -397,7 +400,7 @@ export class SyncEngine {
       this.insightCtl.abort();
       this.st.metrics.cancelled++;
     }
-    void this.runRewrite(selectBatch(diff, TIMING.batchChars), false);
+    void this.runRewrite(selectBatch(diff, this.deps.getSettings().ai.mode === 'device' ? TIMING.deviceBatchChars : TIMING.batchChars), false);
   }
 
   private async runRewrite(batch: BlockDiff, reorganizeOnly: boolean): Promise<void> {
@@ -412,7 +415,7 @@ export class SyncEngine {
     };
     const ctl = new AbortController();
     this.rewriteCtl = ctl;
-    const timeout = setTimeout(() => ctl.abort(), TIMING.rewriteTimeout);
+    const timeout = setTimeout(() => ctl.abort(), settings.ai.mode === 'device' ? TIMING.deviceTimeout : TIMING.rewriteTimeout);
     this.refreshStatus();
     this.emit();
 
@@ -428,7 +431,7 @@ export class SyncEngine {
       const full = this.sinceFull + 1 >= TIMING.fullContextEvery || changedChars >= TIMING.fullContextChars;
       const built = buildRewriteMessages({ organized: this.st.organized, currentBlocks: current.blocks, batch, settings, reorganizeOnly, full });
       this.sinceFull = built.previewSections.length ? this.sinceFull + 1 : 0; // reset only once the whole document was sent
-      const res = await this.deps.ai.rewrite(built.messages, ctl.signal);
+      const res = await this.deps.ai.rewrite(built.messages, ctl.signal, built.simple);
       if (!res.cached) pushMetric(this.st.metrics.aiLatency, res.latencyMs);
       if (this.isStale(job)) return;
 
@@ -444,7 +447,7 @@ export class SyncEngine {
         try {
           this.st.metrics.repairs++;
           const repairMsgs = buildRewriteMessages({ organized: doc, currentBlocks: current.blocks, batch: { added: [], modified: [], removed: [] }, settings, repair: uncoveredBlocks });
-          const fix = await this.deps.ai.rewrite(repairMsgs.messages, ctl.signal);
+          const fix = await this.deps.ai.rewrite(repairMsgs.messages, ctl.signal, repairMsgs.simple);
           if (this.isStale(job)) return;
           const inRepair = new Set(repairMsgs.previewSections.flatMap((id) => doc.sections[id]?.units ?? []));
           result = applyPatch(doc, fix.ops, { ...ctx, previewUnitIds: inRepair, changedSourceIds: new Set(uncoveredBlocks.map((b) => b.id)), now: Date.now() }, null);
@@ -588,7 +591,7 @@ export class SyncEngine {
     const settings = this.deps.getSettings();
     const ctl = new AbortController();
     this.insightCtl = ctl;
-    const timeout = setTimeout(() => ctl.abort(), TIMING.rewriteTimeout);
+    const timeout = setTimeout(() => ctl.abort(), settings.ai.mode === 'device' ? TIMING.deviceTimeout : TIMING.rewriteTimeout);
     const epoch = this.epoch;
     const orgVersion = this.st.organized.version;
     this.st.lastInsightsAt = Date.now();
