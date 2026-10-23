@@ -23,6 +23,8 @@ describe('free options in the AI connection form', () => {
     expect(html).toContain('aistudio.google.com/rate-limit');
     expect(html).toContain('may use what you send');
     expect(html).toContain('18 or older');
+    expect(html).toContain('NotePilot server'); // under-18s are pointed to their school, not to a local model
+    expect(html).not.toMatch(/Under 18\? Use|need no account/);
     expect(html).toContain('sets Update frequency to Saver');
     // Already at Saver: nothing changes, so nothing to announce.
     expect(form(withPreset('Google Gemini (free tier)', 'saver'))).not.toContain('sets Update frequency to Saver');

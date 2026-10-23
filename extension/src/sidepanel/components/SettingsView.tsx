@@ -218,7 +218,7 @@ export function SettingsView({
           <p role="status" className="text-[11.5px] text-amber-700 dark:text-amber-300">The on-device AI cannot transcribe audio. Choose a transcription service above to record.</p>
         )}
         {transcriptionPreset?.free && (
-          <FreeTierNote free={transcriptionPreset.free} about="Your audio" instead="Local Whisper, which needs no account" />
+          <FreeTierNote free={transcriptionPreset.free} about="Your audio" />
         )}
         <Field label="Transcription model" hint="The service must offer /audio/transcriptions. Presets set the model and estimated price; adjust these to match your provider." htmlFor="np-rec-model">
           <input id="np-rec-model" className={inputCls} value={s.recording.model} spellCheck={false} onChange={(e) => update((x) => ({ ...x, recording: { ...x.recording, model: e.target.value.trim() } }))} />

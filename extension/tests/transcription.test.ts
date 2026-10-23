@@ -460,7 +460,7 @@ describe('recording settings and consent text', () => {
     expect(groq).toContain('Custom (OpenAI-compatible)');
     expect(groq).toContain('Transcription address');
     expect(groq).toContain('Transcription API key');
-    for (const limit of ['20 requests', '2,000', '7,200', '28,800', '18 or older', 'Local Whisper, which needs no account', 'does not train']) expect(groq).toContain(limit);
+    for (const limit of ['20 requests', '2,000', '7,200', '28,800', '18 or older', 'NotePilot server', 'does not train']) expect(groq).toContain(limit);
     settings.recording = { ...settings.recording, ...applyTranscriptionPreset(preset('Local')) };
     const local = panel(settings);
     expect(local).toContain('Systran/faster-whisper-small');

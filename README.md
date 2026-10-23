@@ -76,12 +76,10 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 
 Step-by-step setup for every option, with pictures: **[docs/SETUP.md](docs/SETUP.md)**.
 
-Every option below is in Settings → AI model, and the panel shows each one's limits and what happens to your notes before you connect. The free cloud tiers are rate-limited, so choosing one also sets **Frequency** to *Saver*. Their terms require users to be **18 or older**; the two options that run on your own computer need no account.
+Every option below is in Settings → AI model, and the panel shows each one's limits and what happens to your notes before you connect. The free tiers are rate-limited, so choosing one also sets **Frequency** to *Saver*. Their terms require users to be **18 or older**.
 
 | Option | Cost and limits | Your notes | Setup |
 |---|---|---|---|
-| **This computer** (Chrome's built-in AI, Gemini Nano) | Free, no limits | Never leave your computer | Choose *On this computer*, then *Download the model* (one time). Needs Chrome on Windows, macOS 13+, Linux or a Chromebook Plus, 22 GB of free disk, and a GPU with more than 4 GB of memory or 16 GB of RAM. Slower and less capable than cloud models; no recording. |
-| **Ollama (local)** | Free, no limits | Never leave your computer | Install the Ollama app from ollama.com/download, run `ollama pull gemma3:4b` (3.4 GB), and allow the extension to call it (below). Runs on 8 GB of memory, better with 16; Ollama only uses memory while it is running. |
 | **Groq (free tier)** | Free: about 200,000 tokens a day (roughly 40–60 notes updates) and 30 requests a minute | Not used for training | Create a key at console.groq.com/keys. |
 | **Google Gemini (free tier)** | Free, limits set per model | **May be used to improve Google's models and read by reviewers.** Don't use it for personal or confidential notes. | Create a key at aistudio.google.com/apikey. |
 | **Mistral (free mode)** | Free, small monthly allowance | May be used for training unless you opt out in Mistral's privacy settings | Create a key at console.mistral.ai. |
@@ -89,21 +87,9 @@ Every option below is in Settings → AI model, and the panel shows each one's l
 
 Free limits were checked on 2026-10-22; providers change them, so the panel links to each account's own limits page.
 
-**Ollama needs one setting** so Chrome extensions may call it. On macOS, run this, then quit and reopen Ollama:
+**Free recording.** Transcription can use a different service from your notes: Settings → Recording → *Transcription* (each service has its own address and key, and recording asks for your OK again when the address changes). **Groq (free tier)** runs `whisper-large-v3-turbo` free for about 8 hours of audio a day (adults only, not used for training). **Mistral (Voxtral Mini)** costs about $0.003 a minute.
 
-```bash
-launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"
-```
-
-On Windows or Linux, set the `OLLAMA_ORIGINS` environment variable to `chrome-extension://*` for the Ollama service. Then choose **Ollama (local)** (address `http://localhost:11434/v1`, no key needed).
-
-**Free recording.** Transcription can use a different service from your notes: Settings → Recording → *Transcription* (each service has its own address and key, and recording asks for your OK again when the address changes). **Groq (free tier)** runs `whisper-large-v3-turbo` free for about 8 hours of audio a day (adults only, not used for training). **Local Whisper (free, private)** sends audio to a [Speaches](https://speaches.ai) server on your computer (`http://localhost:8000/v1`), so recordings never leave it; download its model once:
-
-```bash
-uvx speaches-cli model download Systran/faster-whisper-small
-```
-
-**Mistral (Voxtral Mini)** costs about $0.003 a minute. Chrome's built-in AI can't transcribe, so with *On this computer* choose a transcription service before recording.
+**Models on your own computer (not recommended for most people).** NotePilot can also use Chrome's built-in model (*On this computer*) or a model run by [Ollama](https://ollama.com) (`ollama pull gemma3:4b`, address `http://localhost:11434/v1`), and a local [Speaches](https://speaches.ai) server for recording. They are free, but they organize notes noticeably less well, are slow on most laptops, and need several GB of memory and disk (Chrome's model needs 22 GB free to download; Ollama has to be allowed to answer Chrome extensions with `OLLAMA_ORIGINS`). Use a cloud option unless you can't; [docs/SETUP.md](docs/SETUP.md#models-on-your-own-computer-not-recommended) has the steps.
 
 ---
 

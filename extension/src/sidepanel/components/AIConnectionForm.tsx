@@ -273,7 +273,7 @@ export function AIConnectionForm({ settings, update, compact }: { settings: Sett
                 <code className="font-mono text-[11px]">chrome://on-device-internals</code> for Chrome’s reason.
               </p>
             )}
-            <p>Other free options: choose My API key → Provider for Groq, Gemini, Mistral, OpenRouter (free models), or Ollama (local). Check each preset’s limits and data terms.</p>
+            <p>Other free options: choose My API key → Provider for Groq, Gemini, Mistral or OpenRouter (free models). Check each preset’s limits and data terms.</p>
             <Button size="sm" variant="ghost" onClick={() => set({ mode: 'direct' })}>See free provider presets</Button>
           </div>
         </>
