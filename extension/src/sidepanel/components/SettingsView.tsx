@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { endpointOrigin, keyForAddress, transcriptionOrigin, type Settings } from '../../core/settings';
+import { NOTE_STYLES, endpointOrigin, keyForAddress, transcriptionOrigin, type Settings } from '../../core/settings';
 import { TRANSCRIPTION_PRESETS, applyTranscriptionPreset, sameTranscriptionDefaults, transcriptionPresetFor } from '../../core/transcriptionPresets';
 import { toMarkdown } from '../../core/export';
 import type { DailyUsage } from '../../ai/usage';
@@ -10,6 +10,7 @@ import { clearAllLocalSettingsData } from '../../storage/settingsStore';
 import { usage } from '../runtime';
 import { AIConnectionForm, Field, inputCls } from './AIConnectionForm';
 import { FreeTierNote } from './FreeTierNote';
+import { ThemePicker } from './ThemePicker';
 import { Button, Icon, Segmented, Switch } from './ui';
 
 function Card({ title, children, description }: { title: string; description?: string; children: ReactNode }) {
@@ -100,6 +101,15 @@ export function SettingsView({
       </Card>
 
       <Card title="Writing">
+        <Row label="Note style" hint={NOTE_STYLES.find((n) => n.value === s.noteStyle)?.description}>
+          <Segmented
+            size="sm"
+            label="Note style"
+            value={s.noteStyle}
+            onChange={(noteStyle) => update((x) => ({ ...x, noteStyle }))}
+            options={NOTE_STYLES.map((n) => ({ value: n.value, label: n.label }))}
+          />
+        </Row>
         <Row label="Rewriting intensity">
           <Segmented
             size="sm"
@@ -166,6 +176,9 @@ export function SettingsView({
       </Card>
 
       <Card title="Display">
+        <Field label="Theme">
+          <ThemePicker value={s.display.theme} onChange={(theme) => update((x) => ({ ...x, display: { ...x.display, theme } }))} />
+        </Field>
         <Row label="Label AI clarifications & expansions">
           <Switch label="Label AI content" checked={s.display.showOriginLabels} onChange={(v) => update((x) => ({ ...x, display: { ...x.display, showOriginLabels: v } }))} />
         </Row>

@@ -18,6 +18,28 @@ const DETAIL: Record<Settings['detailLevel'], string> = {
   detailed: 'Be detailed: fully explain each point the user made (without inventing new facts).',
 };
 
+/** The note style the user chose (Settings → Writing). Standard adds nothing: the rules above are its style. */
+const NOTE_STYLE_RULES: Record<Settings['noteStyle'], string> = {
+  standard: '',
+  outline: `NOTE STYLE: OUTLINE (where this differs from STRUCTURE, this wins)
+- Write the notes as an outline: every unit is a "list" of short bullet points, nested up to two levels, one fact per bullet, starting with the key word. Use fragments rather than full sentences when the meaning stays clear.
+- No "paragraph" units. Tables, numbered steps, definitions and equations are still fine where they fit.
+
+`,
+  qa: `NOTE STYLE: QUESTIONS AND ANSWERS (where this differs from STRUCTURE, this wins)
+- Write the notes as question-and-answer pairs a student can test themselves with. Each unit is one pair: a bold question on the first line, a blank line, then the answer, e.g. "**Q: What does glycolysis produce?**\n\nA net 2 ATP and 2 NADH per glucose."
+- Answers keep every fact and detail from the notes; a list or table inside an answer is fine. Ask in the order a teacher would, from what it is to how and why.
+- Section titles stay topics, not questions.
+
+`,
+  cornell: `NOTE STYLE: CORNELL NOTES (where this differs from STRUCTURE, this wins)
+- Each top-level section starts with a "callout" unit that begins with **Cue questions** followed by a "- " list of two to four short questions the section answers (origin "clarification", citing the blocks the section is built from).
+- Write the section's notes below it as usual.
+- Each top-level section ends with a "callout" unit that begins with **Summary:** and sums the section up in one sentence (origin "clarification", citing the same blocks).
+- These two callouts replace the usual one-callout takeaway. They never replace the notes themselves: every source block must still be rewritten in a regular unit.
+
+`,
+};
 
 function completionRules(s: Settings): string {
   if (s.completion === 'off') {
@@ -103,7 +125,7 @@ REWRITING
 - Bold (**term**) the one to three most important terms in a unit. Do not use HTML, images or links that are not in the notes.
 - Write in the same language as the notes. ${subject}
 
-MAKE IT EASY TO UNDERSTAND
+${NOTE_STYLE_RULES[s.noteStyle]}MAKE IT EASY TO UNDERSTAND
 - Lead each section with its main idea, then the supporting details. Within a topic, prefer the order: what it is → how or why it works → example → consequences.
 - One idea per sentence. Prefer short sentences (about 25 words or fewer) and everyday words; keep the technical terms the course needs.
 - Make relationships explicit with connecting words ("because", "so", "which means", "in contrast", "for example").

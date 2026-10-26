@@ -2,8 +2,200 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Themes. Colours are RGB triplets read by tailwind.config.cjs as
+ * rgb(var(--np-…) / <alpha-value>), so opacity modifiers keep working.
+ * Roles: ink 800/900 main text, ink 400–500 secondary text, ink 50–100 surfaces,
+ * ink 950 the dark-mode page. --np-white is the card and page colour in light mode
+ * and the inverted-button colour in dark mode, so it stays light in both.
+ * Classic (also used when no data-theme is set) uses the same values light and dark.
+ */
 :root {
   color-scheme: light dark;
+  --np-font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --np-font-serif: Charter, 'Iowan Old Style', Georgia, Cambria, serif;
+  --np-font-size: 13px;
+  /* Classic: neutral grays with a blue accent. */
+  --np-ink-50: 247 247 248;
+  --np-ink-100: 238 238 240;
+  --np-ink-200: 220 220 224;
+  --np-ink-300: 189 189 196;
+  --np-ink-400: 142 142 153;
+  --np-ink-500: 107 107 118;
+  --np-ink-600: 82 82 91;
+  --np-ink-700: 63 63 70;
+  --np-ink-800: 39 39 42;
+  --np-ink-900: 24 24 27;
+  --np-ink-950: 15 15 17;
+  --np-accent-50: 238 244 255;
+  --np-accent-100: 219 230 254;
+  --np-accent-200: 191 211 254;
+  --np-accent-300: 147 180 253;
+  --np-accent-400: 96 139 250;
+  --np-accent-500: 59 102 245;
+  --np-accent-600: 37 73 234;
+  --np-accent-700: 29 56 215;
+  --np-accent-800: 30 48 174;
+  --np-accent-900: 30 47 137;
+  --np-white: 255 255 255;
+}
+
+/* Paper: warm cream pages, sepia ink, terracotta accent, notebook serif. */
+:root[data-theme="paper"] {
+  --np-font-serif: 'Iowan Old Style', Charter, 'Palatino Linotype', Palatino, Georgia, serif;
+  --np-ink-50: 248 242 230;
+  --np-ink-100: 240 232 214;
+  --np-ink-200: 226 214 189;
+  --np-ink-300: 201 184 153;
+  --np-ink-400: 154 135 106;
+  --np-ink-500: 119 102 77;
+  --np-ink-600: 92 78 61;
+  --np-ink-700: 72 61 49;
+  --np-ink-800: 51 41 31;
+  --np-ink-900: 35 27 20;
+  --np-ink-950: 23 18 13;
+  --np-accent-50: 251 241 236;
+  --np-accent-100: 246 224 213;
+  --np-accent-200: 236 195 174;
+  --np-accent-300: 223 159 130;
+  --np-accent-400: 205 122 86;
+  --np-accent-500: 181 96 61;
+  --np-accent-600: 152 75 47;
+  --np-accent-700: 124 60 39;
+  --np-accent-800: 101 50 35;
+  --np-accent-900: 83 43 32;
+  --np-white: 255 251 243;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="paper"] {
+    --np-ink-50: 250 244 232;
+    --np-ink-100: 240 231 212;
+    --np-ink-200: 221 208 182;
+    --np-ink-300: 195 178 147;
+    --np-ink-400: 166 148 116;
+    --np-ink-500: 135 119 89;
+    --np-ink-600: 102 88 67;
+    --np-ink-700: 76 65 52;
+    --np-ink-800: 55 46 37;
+    --np-ink-900: 40 33 26;
+    --np-ink-950: 27 23 18;
+    --np-accent-50: 252 242 236;
+    --np-accent-100: 248 226 214;
+    --np-accent-200: 240 200 178;
+    --np-accent-300: 232 168 136;
+    --np-accent-400: 220 138 101;
+    --np-accent-500: 199 110 72;
+    --np-accent-600: 169 86 55;
+    --np-accent-700: 138 69 44;
+    --np-accent-800: 110 56 38;
+    --np-accent-900: 90 47 33;
+    --np-white: 253 247 234;
+  }
+}
+
+/* Forest: green-gray ink with a green accent. */
+:root[data-theme="forest"] {
+  --np-ink-50: 244 248 245;
+  --np-ink-100: 232 239 234;
+  --np-ink-200: 210 221 213;
+  --np-ink-300: 175 193 180;
+  --np-ink-400: 123 144 131;
+  --np-ink-500: 93 112 99;
+  --np-ink-600: 74 91 79;
+  --np-ink-700: 57 71 61;
+  --np-ink-800: 38 48 42;
+  --np-ink-900: 24 32 27;
+  --np-ink-950: 14 20 16;
+  --np-accent-50: 237 248 240;
+  --np-accent-100: 211 238 219;
+  --np-accent-200: 169 220 184;
+  --np-accent-300: 119 196 147;
+  --np-accent-400: 74 168 113;
+  --np-accent-500: 47 140 88;
+  --np-accent-600: 35 115 71;
+  --np-accent-700: 29 92 58;
+  --np-accent-800: 26 74 48;
+  --np-accent-900: 22 61 40;
+  --np-white: 250 252 249;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="forest"] {
+    --np-ink-50: 241 246 242;
+    --np-ink-100: 226 234 228;
+    --np-ink-200: 201 215 205;
+    --np-ink-300: 167 187 173;
+    --np-ink-400: 138 159 144;
+    --np-ink-500: 108 128 114;
+    --np-ink-600: 80 97 86;
+    --np-ink-700: 58 72 64;
+    --np-ink-800: 39 50 43;
+    --np-ink-900: 26 35 30;
+    --np-ink-950: 17 24 19;
+    --np-accent-50: 237 249 241;
+    --np-accent-100: 213 240 222;
+    --np-accent-200: 172 223 189;
+    --np-accent-300: 134 209 162;
+    --np-accent-400: 92 187 130;
+    --np-accent-500: 62 161 103;
+    --np-accent-600: 46 131 82;
+    --np-accent-700: 37 105 65;
+    --np-accent-800: 31 84 53;
+    --np-accent-900: 26 69 44;
+    --np-white: 247 250 246;
+  }
+}
+
+/* High contrast: black on white, a strong blue accent, larger text. */
+:root[data-theme="contrast"] {
+  --np-font-size: 14.5px;
+  --np-ink-50: 245 245 245;
+  --np-ink-100: 230 230 230;
+  --np-ink-200: 140 140 140;
+  --np-ink-300: 107 107 107;
+  --np-ink-400: 71 71 71;
+  --np-ink-500: 51 51 51;
+  --np-ink-600: 31 31 31;
+  --np-ink-700: 18 18 18;
+  --np-ink-800: 0 0 0;
+  --np-ink-900: 0 0 0;
+  --np-ink-950: 0 0 0;
+  --np-accent-50: 234 240 255;
+  --np-accent-100: 212 224 255;
+  --np-accent-200: 168 193 255;
+  --np-accent-300: 111 150 255;
+  --np-accent-400: 47 100 245;
+  --np-accent-500: 10 71 224;
+  --np-accent-600: 0 54 194;
+  --np-accent-700: 0 42 158;
+  --np-accent-800: 0 33 125;
+  --np-accent-900: 0 26 99;
+  --np-white: 255 255 255;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="contrast"] {
+    --np-ink-50: 255 255 255;
+    --np-ink-100: 245 245 245;
+    --np-ink-200: 230 230 230;
+    --np-ink-300: 204 204 204;
+    --np-ink-400: 184 184 184;
+    --np-ink-500: 163 163 163;
+    --np-ink-600: 140 140 140;
+    --np-ink-700: 115 115 115;
+    --np-ink-800: 51 51 51;
+    --np-ink-900: 20 20 20;
+    --np-ink-950: 0 0 0;
+    --np-accent-50: 240 244 255;
+    --np-accent-100: 220 230 255;
+    --np-accent-200: 188 208 255;
+    --np-accent-300: 154 184 255;
+    --np-accent-400: 111 152 255;
+    --np-accent-500: 74 125 255;
+    --np-accent-600: 47 100 245;
+    --np-accent-700: 31 79 214;
+    --np-accent-800: 26 64 173;
+    --np-accent-900: 22 52 134;
+    --np-white: 255 255 255;
+  }
 }
 
 html,
@@ -13,7 +205,7 @@ body,
 }
 
 body {
-  font-size: 13px;
+  font-size: var(--np-font-size, 13px);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -163,5 +355,23 @@ body {
 }
 
 .np-focus {
-  @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/70 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-ink-950;
+  @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-ink-950;
+}
+
+/* High contrast: larger reading text and a thick, solid focus outline instead of the soft ring. */
+:root[data-theme="contrast"] .np-prose {
+  font-size: 16px;
+}
+:root[data-theme="contrast"] .np-prose-sm {
+  font-size: 14px;
+}
+:root[data-theme="contrast"] .np-focus:focus-visible {
+  box-shadow: none;
+  outline: 3px solid rgb(var(--np-accent-700));
+  outline-offset: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="contrast"] .np-focus:focus-visible {
+    outline-color: rgb(var(--np-accent-300));
+  }
 }

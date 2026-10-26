@@ -65,6 +65,11 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 
 > **Models and cost.** Defaults are `gpt-5.4-mini` (rewriting) and `gpt-5.4` (insights). The two cheapest presets rewrite for $0.10 / $0.50 per million tokens: **OpenAI, low cost** (`gpt-6-luna`, with `gpt-5.4-mini` for insights; repeated prompt text is billed at $0.01) and **Anthropic, low cost** (Claude Haiku 5.5, with Claude Sonnet 5.5 for insights; through Anthropic's OpenAI-compatible endpoint Haiku always thinks first, billed as output, and there is no prompt caching). Choosing a preset also sets its prices, so the daily cost limit matches what you're charged; edit them in Settings → Cost limits if your provider's rates differ. Any OpenAI-compatible model name works, including local ones (Ollama).
 
+### Styles
+
+- **Note style** (Settings → Writing): **Standard** (paragraphs and lists, whichever fits), **Outline** (short nested bullets), **Q&A** (each point as a question and its answer, for testing yourself) or **Cornell** (each section opens with cue questions and ends with a one-sentence summary). It applies to new updates; *Rebuild* rewrites everything in the new style.
+- **Theme** (Settings → Display): **Classic**, **Paper** (warm cream pages, serif note text), **Forest** (soft greens) or **Contrast** (black on white, larger note text, strong outlines). Each has a light and a dark version that follows your system.
+
 ### Keeping costs down
 
 - **Frequency** (Settings → Processing) sets how eagerly AI work runs. *Balanced* (default): while you keep typing, notes are organized at least every 12 s, and insights refresh after 15 s of quiet, at most half as often as *Realtime*. *Saver* waits up to 30 s. *Realtime* is the most responsive.

@@ -35,6 +35,11 @@ export function App() {
     setTab('notes');
     setScrollTarget({ id, nonce: Date.now() });
   }, []);
+  // The theme's colors and type are CSS variables keyed on this attribute (index.css).
+  const theme = settings?.display.theme ?? 'classic';
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   if (!settings) return null;
 

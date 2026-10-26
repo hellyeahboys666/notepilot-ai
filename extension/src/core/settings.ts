@@ -7,6 +7,24 @@ export type Completion = 'off' | 'finish' | 'develop';
 export type InsightDepth = 'off' | 'brief' | 'standard' | 'deep';
 export type Frequency = 'realtime' | 'balanced' | 'saver';
 export type JsonMode = 'json_schema' | 'json_object' | 'prompt_only';
+/** How the organized notes are written (see NOTE_STYLE_RULES in prompts.ts). */
+export type NoteStyle = 'standard' | 'outline' | 'qa' | 'cornell';
+/** How the panel looks: colors and type (see index.css). */
+export type Theme = 'classic' | 'paper' | 'forest' | 'contrast';
+
+export const NOTE_STYLES: { value: NoteStyle; label: string; description: string }[] = [
+  { value: 'standard', label: 'Standard', description: 'Clear paragraphs and lists, whichever fits each point.' },
+  { value: 'outline', label: 'Outline', description: 'Everything as short, nested bullet points.' },
+  { value: 'qa', label: 'Q&A', description: 'Each point as a question and its answer, for testing yourself.' },
+  { value: 'cornell', label: 'Cornell', description: 'Each section opens with cue questions and ends with a one-sentence summary.' },
+];
+
+export const THEMES: { value: Theme; label: string; description: string }[] = [
+  { value: 'classic', label: 'Classic', description: 'Neutral grays with a blue accent.' },
+  { value: 'paper', label: 'Paper', description: 'Warm, cream pages and serif note text, like a notebook.' },
+  { value: 'forest', label: 'Forest', description: 'Soft greens, calm and easy on the eyes.' },
+  { value: 'contrast', label: 'Contrast', description: 'High contrast: black on white, larger note text and strong outlines.' },
+];
 
 export interface AISettings {
   /** "direct": the extension calls an OpenAI-compatible endpoint with the user's own key.
@@ -40,6 +58,7 @@ export interface DisplaySettings {
   showOriginLabels: boolean;
   showExpansions: boolean;
   highlightUpdates: boolean;
+  theme: Theme;
 }
 
 export interface Consent {
@@ -72,6 +91,7 @@ export interface Settings {
   detailLevel: DetailLevel;
   /** off: keep fragments as written · finish: complete cut-off sentences · develop: also write out half-developed ideas. */
   completion: Completion;
+  noteStyle: NoteStyle;
   insightDepth: InsightDepth;
   subject: string;
   aiExpansion: boolean;
@@ -102,13 +122,14 @@ export const DEFAULT_SETTINGS: Settings = {
   rewriteIntensity: 'balanced',
   detailLevel: 'standard',
   completion: 'develop',
+  noteStyle: 'standard',
   insightDepth: 'standard',
   subject: '',
   aiExpansion: true,
   frequency: 'balanced',
   dailyBudgetUSD: 1,
   privacy: { redactPII: true, storeLocally: true, perDocApproval: false, approvedDocs: [], excludedDocs: [] },
-  display: { showOriginLabels: true, showExpansions: true, highlightUpdates: true },
+  display: { showOriginLabels: true, showExpansions: true, highlightUpdates: true, theme: 'classic' },
   consent: null,
   recording: { model: 'gpt-4o-mini-transcribe', language: '', segmentSeconds: 20, pricePerMinute: 0.003, endpoint: 'same', baseUrl: '', apiKey: '' },
   recordingConsent: null,
