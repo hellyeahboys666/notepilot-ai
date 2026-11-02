@@ -64,6 +64,9 @@ export async function openAudio(source: AudioSource, media: MediaDevices = navig
   return new MediaStream(stream.getAudioTracks());
 }
 
+/** RMS loudness below which a stretch counts as unheard (background hiss, a muted tab, a microphone set far too low). */
+export const QUIET_LEVEL = 0.012;
+
 export interface RecorderEnv {
   MediaRecorder: typeof MediaRecorder;
   AudioContext?: typeof AudioContext;
@@ -110,6 +113,7 @@ export class SegmentRecorder {
   private meter = 0;
   private cut = 0;
   private peak = 0;
+  private current = 0;
   private done = false;
   private stopping: Promise<void> | null = null;
   private pending = new Set<Promise<void>>();
@@ -166,7 +170,13 @@ export class SegmentRecorder {
     this.analyser.getFloatTimeDomainData(this.samples);
     let sum = 0;
     for (const v of this.samples) sum += v * v;
-    this.peak = Math.max(this.peak, Math.sqrt(sum / this.samples.length));
+    this.current = Math.sqrt(sum / this.samples.length);
+    this.peak = Math.max(this.peak, this.current);
+  }
+
+  /** The latest loudness (RMS; speech is roughly 0.02–0.2), or null when there is no level meter or it has stopped. */
+  get level(): number | null {
+    return this.analyser && !this.done ? this.current : null;
   }
 
   private next(): void {
@@ -190,7 +200,7 @@ export class SegmentRecorder {
     rec.addEventListener('stop', () => {
       const { seconds, heard } = np.details ?? {
         seconds: (this.env.now() - startedAt) / 1000,
-        heard: !this.analyser || this.peak >= (this.opts.quietLevel ?? 0.012),
+        heard: !this.analyser || this.peak >= (this.opts.quietLevel ?? QUIET_LEVEL),
       };
       try {
         if (chunks.length && seconds * 1000 >= (this.opts.minMs ?? 1500)) {
@@ -215,7 +225,7 @@ export class SegmentRecorder {
     if (!rec) return Promise.resolve();
     const np = (rec as MediaRecorder & { np?: RecorderPart }).np!;
     np.details ??= {
-      heard: !this.analyser || this.peak >= (this.opts.quietLevel ?? 0.012),
+      heard: !this.analyser || this.peak >= (this.opts.quietLevel ?? QUIET_LEVEL),
       seconds: (this.env.now() - np.startedAt) / 1000,
     };
     this.peak = 0;

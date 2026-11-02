@@ -24,6 +24,8 @@ export interface RecordingControls {
   /** Records that the user agreed audio may go to the current transcription service. */
   allow(update: (fn: (s: Settings) => Settings) => void): void;
   openMicPage(): void;
+  /** The input's current loudness for the level meter, or null when not recording. */
+  level(): number | null;
 }
 
 const GATE_MESSAGE: Record<string, string> = {
@@ -189,6 +191,7 @@ export function useRecording(): [RecordingView, RecordingControls] {
       return origin ? { ...s, recordingConsent: { endpointOrigin: origin, at: Date.now() } } : s;
     }),
     openMicPage: () => void chrome.tabs.create({ url: chrome.runtime.getURL('mic.html') }),
+    level: () => live.current?.recorder.level ?? null,
   };
   return [view, controls];
 }

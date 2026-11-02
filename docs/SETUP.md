@@ -135,6 +135,8 @@ If your school or team runs a NotePilot server, they hold the AI key and give yo
 
 <img src="setup/11-recording-groq.png" width="360" alt="Recording with Groq (free tier) transcription">
 
+**Set your microphone volume first.** When you record with the microphone, NotePilot reminds you to check the input volume and shows a live **Input level** bar. The bar should move whenever the speaker talks; if it barely moves, turn the input volume up (on a Mac: System Settings → Sound → Input; on Windows: Settings → System → Sound → Input) or sit closer. If nothing is heard for about 40 seconds, NotePilot warns you.
+
 The first time you record, NotePilot shows where the audio will be sent and asks you to confirm. Only record people who agree to it, and follow your school's rules on recordings.
 
 ---

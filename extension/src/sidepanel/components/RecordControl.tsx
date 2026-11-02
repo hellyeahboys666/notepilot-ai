@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AudioSource } from '../../audio/recorder';
+import { QUIET_LEVEL, type AudioSource } from '../../audio/recorder';
 import { transcriptionOrigin, type Settings } from '../../core/settings';
 import type { RecordingControls, RecordingView } from '../hooks/useRecording';
 import { getSettings } from '../runtime';
@@ -10,6 +10,31 @@ const SOURCE: Record<AudioSource, { label: string; icon: 'mic' | 'speaker'; hint
   mic: { label: 'Microphone', icon: 'mic', hint: 'A lecture or discussion in the room' },
   tab: { label: 'A tab’s audio', icon: 'speaker', hint: 'An online class or video in another tab' },
 };
+
+/** Where to turn the microphone up: the panel can't change the system's input volume itself. */
+export const MIC_VOLUME_HELP = 'On a Mac: System Settings → Sound → Input. On Windows: Settings → System → Sound → Input.';
+
+/** A live bar of how loud the input is, so a microphone set too low shows before any of the lecture is lost. */
+function LevelMeter({ read }: { read: () => number | null }) {
+  const [level, setLevel] = useState<number | null>(null);
+  const readRef = useRef(read);
+  readRef.current = read;
+  useEffect(() => {
+    const t = setInterval(() => setLevel(readRef.current()), 200);
+    return () => clearInterval(t);
+  }, []);
+  if (level === null) return null;
+  // Speech is roughly 0.02–0.2 RMS; a square-root scale keeps quiet speech visible.
+  const pct = Math.min(100, Math.round(Math.sqrt(level / 0.2) * 100));
+  return (
+    <div className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-500">
+      <span className="shrink-0">Input level</span>
+      <span role="meter" aria-label="Input level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-700">
+        <span className={cx('block h-full rounded-full transition-[width] duration-150', level < QUIET_LEVEL ? 'bg-amber-400' : 'bg-emerald-500')} style={{ width: `${Math.max(pct, 2)}%` }} />
+      </span>
+    </div>
+  );
+}
 
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -95,6 +120,8 @@ export function RecordStrip({
 }) {
   const running = rec.state?.phase === 'recording' || rec.state?.phase === 'finishing';
   const now = useNow(running ? 1000 : 60_000);
+  // The volume reminder shows at the start of every microphone recording until dismissed.
+  const [tipClosedFor, setTipClosedFor] = useState<number | null>(null);
   const shell = 'mx-4 mt-3 rounded-lg border px-3 py-2.5 font-sans text-[12px] leading-snug';
   const origin = transcriptionOrigin(settings);
 
@@ -177,6 +204,24 @@ export function RecordStrip({
         {st.pending > 0 && <span className="text-ink-400">(transcribing…)</span>}
       </p>
       {st.lastLine && <p className="mt-1 truncate text-[11.5px] text-ink-500" title={st.lastLine}>{st.lastLine}</p>}
+      {running && st.source === 'mic' && tipClosedFor !== st.startedAt && (
+        <div data-testid="mic-volume-tip" className="mt-1.5 rounded-md bg-white/70 px-2 py-1.5 text-[11.5px] ring-1 ring-red-200/70 dark:bg-ink-900/40 dark:ring-red-500/20">
+          <p>
+            <strong className="font-semibold text-ink-900 dark:text-ink-50">Check your microphone volume</strong> so every word is recorded: the bar below should move whenever the speaker
+            talks. If it barely moves, turn up the input volume or sit closer to the speaker. {MIC_VOLUME_HELP}
+          </p>
+          <button type="button" onClick={() => setTipClosedFor(st.startedAt)} className="np-focus mt-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800">
+            Got it
+          </button>
+        </div>
+      )}
+      {running && <LevelMeter read={controls.level} />}
+      {running && st.quietInRow >= 2 && (
+        <p role="alert" className="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[11.5px] text-amber-900 ring-1 ring-amber-200/70 dark:bg-amber-400/10 dark:text-amber-100 dark:ring-amber-400/20">
+          Nothing heard for {st.quietInRow * settings.recording.segmentSeconds} seconds.{' '}
+          {st.source === 'mic' ? `Turn up your microphone’s input volume or move closer to the speaker. ${MIC_VOLUME_HELP}` : 'The tab may be muted or quiet: turn its volume up.'}
+        </p>
+      )}
       {running && <p className="mt-1 text-[11px] text-ink-400">Keep this panel open: closing it ends the recording.</p>}
       {st.error && <p className="mt-1 text-[11.5px] text-amber-800 dark:text-amber-200">{st.error}</p>}
       {st.phase === 'stopped' && (

@@ -20,6 +20,8 @@ export interface RecordingState {
   pending: number;
   /** Silent segments that were not sent. */
   skipped: number;
+  /** Unheard segments in a row: a microphone set too low, or a muted tab. */
+  quietInRow: number;
   lastLine: string;
   /** Why the recording stopped or a segment was lost; null while all is well. */
   error: string | null;
@@ -65,14 +67,14 @@ export class RecordingSession {
     /** Called when the session must stop recording by itself (doc not writable, cost limit, sign-in lost). */
     private readonly onFatal: () => void,
   ) {
-    this.state = { phase: 'recording', source, docId, startedAt: deps.now(), lines: 0, pending: 0, skipped: 0, lastLine: '', error: null };
+    this.state = { phase: 'recording', source, docId, startedAt: deps.now(), lines: 0, pending: 0, skipped: 0, quietInRow: 0, lastLine: '', error: null };
   }
 
   push(segment: Segment): void {
     if (this.state.phase === 'stopped' || this.closing) return;
-    if (!segment.heard) return this.update({ skipped: this.state.skipped + 1 });
+    if (!segment.heard) return this.update({ skipped: this.state.skipped + 1, quietInRow: this.state.quietInRow + 1 });
     this.queue.push(segment);
-    this.update({ pending: this.queue.length + (this.busy ? 1 : 0) });
+    this.update({ pending: this.queue.length + (this.busy ? 1 : 0), quietInRow: 0 });
     void this.pump();
   }
 
