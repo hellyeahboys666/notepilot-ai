@@ -225,6 +225,45 @@ describe('SyncEngine robustness', () => {
   });
 });
 
+describe('SyncEngine while recording', () => {
+  // Saver (set by every free preset) waits 30 s for quiet: longer than the 20 s between transcript lines.
+  it('keeps insights coming during a lecture, though a transcript line arrives every 20 s', async () => {
+    const h = createHarness({ settings: { frequency: 'saver' } });
+    h.docs.set(['alpha note one', 'beta note two']);
+    h.ai.onRewrite = simpleModel;
+    h.ai.latency = 1000;
+    h.ai.insightLatency = 2000;
+    await h.engine.start();
+    await h.advance(60_000);
+    const before = h.ai.insightCalls;
+    expect(before).toBeGreaterThanOrEqual(1);
+    // Ten minutes of lecture: NotePilot writes a transcript line into the doc every 20 s.
+    for (let i = 0; i < 30; i++) {
+      h.docs.edit((p) => [...p, { text: `[10:${String(i).padStart(2, '0')}] lecture point number ${i} about the topic`, transcript: true }]);
+      await h.advance(20_000);
+    }
+    expect(h.ai.insightCalls - before).toBeGreaterThanOrEqual(2);
+    // The transcript still reaches the notes, about once a minute.
+    expect(h.ai.rewriteCalls.some((c) => (c.changes.added ?? []).some((b) => b.text.includes('lecture point')))).toBe(true);
+    h.engine.stop();
+  });
+
+  it('typing still holds insights back until the user pauses', async () => {
+    const h = createHarness();
+    h.docs.set(['alpha note one']);
+    h.ai.onRewrite = simpleModel;
+    await h.engine.start();
+    await h.advance(60_000);
+    const before = h.ai.insightCalls;
+    for (let i = 0; i < 12; i++) {
+      h.docs.edit((p) => [...p, `typed note ${i}`]);
+      await h.advance(5_000); // a new note every 5 s: never 15 s of quiet
+    }
+    expect(h.ai.insightCalls).toBe(before);
+    h.engine.stop();
+  });
+});
+
 describe('SyncEngine fallbacks', () => {
   it('falls back to full fetches if the cheap revision check is rejected', async () => {
     const h = createHarness();

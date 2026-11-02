@@ -95,6 +95,8 @@ export class SyncEngine {
   private lastCheckedAt = 0;
   private lastPollAt = 0;
   private lastChangeAt = 0;
+  /** Last change the user made (NotePilot's own transcript lines excluded): insights wait for the user to pause. */
+  private lastUserChangeAt = 0;
   private firstPendingAt = 0;
   private lastPollChanged = false;
   private lastActivityAt = 0;
@@ -304,6 +306,7 @@ export class SyncEngine {
       const pendingRemoved = this.st.processed.filter((b) => !knownIds.has(b.id));
       const { blocks } = assignIdentities([...known, ...pendingRemoved], parsed.blocks, () => `b${this.st.nextBlockId++}`);
       const now = Date.now();
+      if (!onlyTranscript(diffById(known, blocks))) this.lastUserChangeAt = now;
       this.st.current = {
         docId: this.docId,
         title: parsed.title,
@@ -391,8 +394,10 @@ export class SyncEngine {
     if (!(this.catchUp || (quiet && typingPaused) || overdue)) return;
     // Transcript lines arrive every ~20 s while recording: organize them about once a minute rather than per line.
     // Anything the user typed goes through at once (and takes the waiting lines with it).
-    const onlyTranscript = [...diff.added, ...diff.removed, ...diff.modified.map((m) => m.after)].every((b) => b.transcript);
-    if (onlyTranscript && !this.catchUp && now - this.firstPendingAt < TIMING.transcriptWait) return;
+    const transcriptOnly = onlyTranscript(diff);
+    if (transcriptOnly && !this.catchUp && now - this.firstPendingAt < TIMING.transcriptWait) return;
+    // Waiting transcript lines can wait a little longer for insights that are already being written.
+    if (transcriptOnly && this.insightCtl && !this.catchUp) return;
 
     this.catchUp = false;
     // Rewrites keep the organized notes current and take priority over optional insights.
@@ -579,8 +584,11 @@ export class SyncEngine {
     if (this.st.insightsOrgVersion === doc.version) return;
     const now = Date.now();
     const pacing = AI_PACING[settings.frequency];
-    if (now - this.lastChangeAt < Math.max(TIMING.insightsQuiet, pacing.insightsQuiet)) return;
-    if (!isEmptyDiff(diffById(this.st.processed, this.st.current.blocks))) return;
+    // While recording, NotePilot writes a transcript line every ~20 s and organizes them about once a minute: neither
+    // counts as the user still typing, so insights keep up with a lecture instead of waiting for it to end.
+    if (now - this.lastUserChangeAt < Math.max(TIMING.insightsQuiet, pacing.insightsQuiet)) return;
+    const pending = diffById(this.st.processed, this.st.current.blocks);
+    if (!isEmptyDiff(pending) && !onlyTranscript(pending)) return;
     const minGap = { brief: 60_000, standard: 45_000, deep: 30_000 }[settings.insightDepth] * pacing.insightsGap;
     if (now - this.st.lastInsightsAt < minGap) return;
     if (now < this.aiBackoffUntil || !this.deps.gate().ok) return;
@@ -669,6 +677,11 @@ export class SyncEngine {
 }
 
 /** Picks a bounded subset of changes for one model call (initial builds of long docs are batched). */
+/** Every change in the diff is a line of NotePilot's own lecture transcript. */
+function onlyTranscript(d: BlockDiff): boolean {
+  return [...d.added, ...d.removed, ...d.modified.map((m) => m.after)].every((b) => b.transcript);
+}
+
 export function selectBatch(diff: BlockDiff, maxChars: number): BlockDiff {
   let budget = maxChars;
   const take = <T>(items: T[], size: (t: T) => number): T[] => {
