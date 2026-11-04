@@ -12,6 +12,7 @@ import {
 import type { SimpleRewrite } from '../core/simpleRewrite';
 import { hash53 } from '../core/text';
 import { parseSummaryResponse, type DocSummary } from '../core/summary';
+import { parseReview, REVIEW_SCHEMA, type QuestionKind, type ReviewQuiz } from '../core/review';
 import type { OrganizedDoc } from '../core/types';
 import { AIError, chatCompletion, type AIResult } from './client';
 import type { UsageTracker } from './usage';
@@ -36,13 +37,16 @@ export interface AIPipelines {
   insights(messages: ChatMessage[], signal: AbortSignal): Promise<{ upsert: InsightItem[]; remove: string[]; latencyMs: number; cached: boolean }>;
   /** On-demand summary (deeper model). Validated against the doc it summarizes. */
   summary(messages: ChatMessage[], doc: OrganizedDoc, signal: AbortSignal, opts?: { fresh?: boolean }): Promise<{ summary: DocSummary; latencyMs: number; cached: boolean }>;
+  /** A quiz on the notes (deeper model), always freshly written so each quiz is new. */
+  review(messages: ChatMessage[], doc: OrganizedDoc, kinds: QuestionKind[], signal: AbortSignal): Promise<{ quiz: ReviewQuiz; latencyMs: number; cached: boolean }>;
 }
 
 export type ChatFn = typeof chatCompletion;
 
 const strings = { type: 'array', items: { type: 'string' } };
 /** Reply shapes for the on-device model's insights and summary (see the prompts for the fields' meaning). */
-const DEVICE_SCHEMAS: Record<'insights' | 'summary', { name: string; schema: object }> = {
+const DEVICE_SCHEMAS: Record<'insights' | 'summary' | 'review', { name: string; schema: object }> = {
+  review: REVIEW_SCHEMA,
   insights: {
     name: 'insights',
     schema: {
@@ -93,7 +97,7 @@ export function createPipelines(
   chat: ChatFn = chatCompletion,
 ): AIPipelines {
   async function call<T>(
-    kind: 'rewrite' | 'insights' | 'summary',
+    kind: 'rewrite' | 'insights' | 'summary' | 'review',
     messages: ChatMessage[],
     signal: AbortSignal,
     parse: (json: unknown) => T,
@@ -119,8 +123,8 @@ export function createPipelines(
       result = await chat(s.ai, {
         model,
         messages: convo,
-        temperature: kind === 'insights' ? 0.4 : 0.2,
-        maxTokens: kind === 'summary' ? 4000 : 8000,
+        temperature: kind === 'insights' || kind === 'review' ? 0.4 : 0.2,
+        maxTokens: kind === 'summary' ? 4000 : kind === 'review' ? 6000 : 8000,
         jsonMode: s.ai.jsonMode,
         // The on-device model is held to an exact reply shape for every call: "any JSON object" lets it answer {}.
         jsonSchema: opts.schema ?? (kind === 'rewrite' ? REWRITE_JSON_SCHEMA : s.ai.mode === 'device' ? DEVICE_SCHEMAS[kind] : undefined),
@@ -157,5 +161,6 @@ export function createPipelines(
     },
     insights: (messages, signal) => call('insights', messages, signal, (json) => parseInsightsResponse(json)),
     summary: (messages, doc, signal, opts) => call('summary', messages, signal, (json) => ({ summary: parseSummaryResponse(json, doc) }), opts),
+    review: (messages, doc, kinds, signal) => call('review', messages, signal, (json) => ({ quiz: parseReview(json, doc, { kinds }) }), { fresh: true }),
   };
 }

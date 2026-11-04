@@ -60,6 +60,14 @@ A separate review pass ran 3,000 randomized patch sequences against a deep-froze
 
 The review also flagged a design gap, which is now fixed as well: a paragraph deleted and restored (undo) between polls now keeps its identity, so no AI work is repeated.
 
+## Next version: review
+
+- **Review** tab: a quiz on the organized notes (multiple choice, fill in the blank, true or false, short answer; 5–20 questions; all notes or one topic). One AI call writes it (insights model, always fresh, an exact reply shape for Chrome's built-in model); `parseReview` drops questions it can't mark fairly; answers are marked in the panel; retrying missed questions costs nothing.
+- **Copy a review prompt**: a self-contained prompt with the notes, subject, question kinds, how to run the review and the insights' possible mistakes, for any chat AI. No API use.
+- An independent review found 13 problems, all fixed and tested: the typo allowance and the answer matcher accepted wrong answers (299792 for 299793, -5 for 5, Na for Na+); a one-letter answer ("A") could never be right; option letters were read against de-duplicated options; very long notes weren't capped; a document switch didn't cancel the request; copying could fail silently on the results screen; titles weren't redacted; notes could end the prompt's notes block early; focus and colour-only feedback.
+- Checked in the browser (end to end): a quiz written once, answered and marked, missed questions retried without the AI, and the prompt copied without an AI call.
+- Not verified here: question quality from real models.
+
 ## Next version: free options
 
 - **On this computer**: AI mode `device` runs every AI call on Chrome's built-in model through the Prompt API (`LanguageModel`, `extension/src/ai/onDevice.ts`): no key, no cost, nothing sent. One instruction-only base session per system prompt, cloned for each request so notes never share a session; the patch schema is the response constraint (any JSON object if Chrome can't compile it); context overflow, readiness and cancellation map to typed errors. Settings and Setup show requirements, readiness and a one-time download with progress.

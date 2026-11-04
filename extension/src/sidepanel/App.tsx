@@ -8,14 +8,16 @@ import { useEngine, type EngineControls } from './hooks/useEngine';
 import { useSettings } from './hooks/useSettings';
 import { useSummary } from './hooks/useSummary';
 import { useRecording } from './hooks/useRecording';
+import { useReview } from './hooks/useReview';
 import { InsightsView } from './components/InsightsView';
+import { ReviewView } from './components/ReviewView';
 import { NotesView, useNow } from './components/NotesView';
 import { SettingsView } from './components/SettingsView';
 import { Setup } from './components/Setup';
 import { SourceSheet } from './components/SourceSheet';
 import { Button, Logo, cx, relativeTime } from './components/ui';
 
-type Tab = 'notes' | 'insights' | 'settings';
+type Tab = 'notes' | 'insights' | 'review' | 'settings';
 
 export function App() {
   const [settings, update] = useSettings();
@@ -23,6 +25,7 @@ export function App() {
   const [view, controls] = useEngine(active.docId, settings);
   const [summary, summaryControls] = useSummary(active.docId);
   const [recording, recordingControls] = useRecording();
+  const [review, reviewControls] = useReview(active.docId);
   const [tab, setTab] = useState<Tab>('notes');
   const [sourceUnit, setSourceUnit] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
@@ -71,6 +74,8 @@ export function App() {
           <Loading />
         ) : tab === 'insights' ? (
           <InsightsView view={view} settings={settings} onGo={goToSection} />
+        ) : tab === 'review' && !needsSetup ? (
+          <ReviewView view={view} settings={settings} state={review} controls={reviewControls} onGo={goToSection} />
         ) : needsSetup ? (
           <Setup view={view} settings={settings} update={update} onSignedIn={controls.syncNow} />
         ) : (
@@ -122,6 +127,7 @@ function Header({ view, title, tab, setTab, insightCount }: { view: EngineView |
           [
             ['notes', 'Notes'],
             ['insights', 'Insights'],
+            ['review', 'Review'],
             ['settings', 'Settings'],
           ] as const
         ).map(([id, label]) => (

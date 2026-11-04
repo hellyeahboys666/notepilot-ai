@@ -65,6 +65,15 @@ Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
 
 > **Models and cost.** Defaults are `gpt-5.4-mini` (rewriting) and `gpt-5.4` (insights). The two cheapest presets rewrite for $0.10 / $0.50 per million tokens: **OpenAI, low cost** (`gpt-6-luna`, with `gpt-5.4-mini` for insights; repeated prompt text is billed at $0.01) and **Anthropic, low cost** (Claude Haiku 5.5, with Claude Sonnet 5.5 for insights; through Anthropic's OpenAI-compatible endpoint Haiku always thinks first, billed as output, and there is no prompt caching). Choosing a preset also sets its prices, so the daily cost limit matches what you're charged; edit them in Settings → Cost limits if your provider's rates differ. Any OpenAI-compatible model name works, including local ones (Ollama).
 
+### Review: test yourself
+
+The **Review** tab quizzes you on your organized notes. Choose how many questions (5–20), which kinds (multiple choice, fill in the blank, true or false, short answer) and whether to cover all your notes or one topic.
+
+- **Start quiz** uses your AI connection once to write the questions (with the insights model). Answers are marked in the panel (fill-in-the-blank allows small typos and other accepted wordings; short answers you mark yourself against a model answer), each with an explanation and a link to the section it comes from. **Retry the ones I missed** costs nothing.
+- **Copy a review prompt** costs nothing at all: it copies a ready-made prompt with your notes, subject, chosen question kinds and instructions (one question at a time, feedback after each, a score and what to review at the end). Paste it into ChatGPT, Claude or Gemini and that AI quizzes you there. Possible mistakes the insights found are listed so it doesn't quiz you on them.
+
+Both leave out AI expansions (only your own notes are tested) and redact emails and ID numbers when that privacy setting is on.
+
 ### Styles
 
 - **Note style** (Settings → Writing): **Standard** (paragraphs and lists, whichever fits), **Outline** (short nested bullets), **Q&A** (each point as a question and its answer, for testing yourself) or **Cornell** (each section opens with cue questions and ends with a one-sentence summary). It applies to new updates; *Rebuild* rewrites everything in the new style.

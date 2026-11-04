@@ -71,6 +71,7 @@ const context = await chromium.launchPersistentContext(userDataDir, {
   executablePath: findChromium(),
   headless: process.env.HEADED ? false : true,
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`, '--no-first-run', '--no-default-browser-check'],
+  permissions: ['clipboard-read', 'clipboard-write'],
   viewport: { width: 420, height: 860 },
   deviceScaleFactor: 2,
 });
@@ -101,8 +102,9 @@ try {
     const payload = JSON.parse(user.slice(user.indexOf('{')));
     const isInsights = body.messages[0].content.includes('tutor and research assistant');
     const isSummary = body.messages[0].content.includes("NotePilot's study assistant");
-    const kind = isSummary ? 'summary' : isInsights ? 'insights' : 'rewrite';
-    const out = isSummary ? model.summary(payload) : isInsights ? model.insights(payload) : model.rewrite(payload);
+    const isReview = body.messages[0].content.includes("NotePilot's study coach");
+    const kind = isReview ? 'review' : isSummary ? 'summary' : isInsights ? 'insights' : 'rewrite';
+    const out = isReview ? model.review(payload) : isSummary ? model.summary(payload) : isInsights ? model.insights(payload) : model.rewrite(payload);
     aiLog.push({ kind, model: body.model, payload, system: body.messages[0].content, at: Date.now() });
     await new Promise((r) => setTimeout(r, 400)); // simulated model latency
     await route.fulfill({
@@ -320,6 +322,43 @@ try {
     assert.match(driveRequests[1].url, /\/files\/e2e-companion-doc\?/);
     assert.equal(aiLog.filter((e) => e.kind === 'summary').length, 2, 'a new summary was requested (not served from cache)');
     assert.ok(driveRequests.every((r) => !r.url.includes(DOC_ID)), 'the notes doc is never a Drive target');
+  });
+
+  await check('Review: a quiz is written once, marked in the panel, and missed questions are retried without the AI', async () => {
+    await page.getByRole('tab', { name: 'Review' }).click();
+    await page.screenshot({ path: join(shots, '11-review-setup.png') });
+    await page.getByRole('button', { name: 'Start quiz' }).click();
+    await page.getByText('Question 1 of 3').waitFor({ timeout: 30_000 });
+    const review = aiLog.filter((e) => e.kind === 'review');
+    assert.equal(review.length, 1);
+    assert.ok(!JSON.stringify(review[0].payload).includes('(unverified)'), 'AI expansions are not quizzed');
+    await page.getByRole('button', { name: /Cytoplasm/ }).click();
+    await page.getByText('Correct!').waitFor();
+    await page.screenshot({ path: join(shots, '11b-review-question.png') });
+    await page.getByRole('button', { name: 'Next question' }).click();
+    await page.getByLabel('Your answer').fill('4');
+    await page.getByRole('button', { name: 'Check' }).click();
+    await page.getByText('Not quite. The answer is: 2').waitFor();
+    await page.getByRole('button', { name: 'Next question' }).click();
+    await page.getByRole('button', { name: 'True', exact: true }).click();
+    await page.getByRole('button', { name: 'See results' }).click();
+    await page.getByText('1/3').waitFor();
+    await page.screenshot({ path: join(shots, '11c-review-results.png') });
+    await page.getByRole('button', { name: 'Retry the 2 I missed' }).click();
+    await page.getByText('Question 1 of 2').waitFor();
+    assert.equal(aiLog.filter((e) => e.kind === 'review').length, 1, 'retrying asks the AI nothing');
+    await page.getByRole('button', { name: 'End quiz' }).click();
+  });
+
+  await check('Review: a prompt for any chat AI is copied with the notes and instructions, without an AI call', async () => {
+    const calls = aiLog.length;
+    await page.getByRole('button', { name: 'Copy a review prompt' }).click();
+    const copied = page.getByText('Copied. Paste it');
+    const manual = page.locator('textarea[readonly]');
+    await copied.or(manual).first().waitFor({ timeout: 10_000 });
+    const text = (await copied.isVisible()) ? await page.evaluate(() => navigator.clipboard.readText()) : await manual.inputValue();
+    for (const part of ['ONE at a time', 'Base every question only on my notes', ' START ===', 'Glycolysis', 'Start with Question 1.']) assert.ok(text.includes(part), `prompt includes ${part}`);
+    assert.equal(aiLog.length, calls, 'copying a prompt uses no AI');
   });
 
   await page.getByRole('tab', { name: 'Settings' }).click();

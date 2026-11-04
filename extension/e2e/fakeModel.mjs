@@ -154,3 +154,16 @@ export function summary(p) {
     review: [{ text: 'Why oxygen matters for the electron transport chain is not explained.', sections: ids('Electron Transport Chain') }],
   };
 }
+
+/** A short quiz on the notes it was sent (Review tab): one multiple choice, one fill-in-the-blank, one true/false. */
+export function review(p) {
+  const id = (title) => p.sections.find((s) => s.title === title)?.id;
+  const glycolysis = id('Glycolysis');
+  return {
+    questions: [
+      { kind: 'mc', prompt: 'Where does glycolysis take place?', choices: ['Mitochondrial matrix', 'Cytoplasm', 'Nucleus', 'Inner membrane'], answer: 'Cytoplasm', explanation: 'Your notes say glycolysis splits glucose in the cytoplasm.', sectionIds: [glycolysis].filter(Boolean) },
+      { kind: 'fill', prompt: 'Glycolysis has a net yield of ____ ATP per glucose.', answer: '2', accept: ['two'], explanation: 'Net yield: 2 ATP per glucose.', sectionIds: [glycolysis].filter(Boolean) },
+      { kind: 'tf', prompt: 'Glycolysis needs oxygen.', answer: 'false', explanation: 'Glycolysis runs without oxygen; fermentation keeps it going.', sectionIds: [glycolysis].filter(Boolean) },
+    ],
+  };
+}
